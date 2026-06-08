@@ -238,6 +238,50 @@ h2 {
   line-height: 1.05;
 }
 
+.playerName {
+  color: var(--gold);
+}
+
+.playerSpec.classdeathknight {
+  color: #c41e3a;
+}
+
+.playerSpec.classpaladin {
+  color: #f48cba;
+}
+
+.playerSpec.classshaman {
+  color: #0070dd;
+}
+
+.playerSpec.classdruid {
+  color: #ff7c0a;
+}
+
+.playerSpec.classhunter {
+  color: #aad372;
+}
+
+.playerSpec.classmage {
+  color: #3fc7eb;
+}
+
+.playerSpec.classpriest {
+  color: #ffffff;
+}
+
+.playerSpec.classrogue {
+  color: #fff468;
+}
+
+.playerSpec.classwarlock {
+  color: #8788ee;
+}
+
+.playerSpec.classwarrior {
+  color: #c69b6d;
+}
+
 .lootCardHeader p {
   margin-bottom: 0;
   color: var(--orange);

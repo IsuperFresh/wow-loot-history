@@ -577,7 +577,16 @@
     const titleWrap = document.createElement("div");
     const name = document.createElement("h3");
     const mainSpec = [group.className, group.spec].filter(Boolean).join(" ");
-    name.textContent = mainSpec ? `${group.name} - ${mainSpec}` : group.name;
+    const playerName = document.createElement("span");
+    playerName.className = "playerName";
+    playerName.textContent = group.name;
+    name.append(playerName);
+    if (mainSpec) {
+      const specText = document.createElement("span");
+      specText.className = `playerSpec class${classToken(group.className)}`;
+      specText.textContent = ` - ${mainSpec}`;
+      name.append(specText);
+    }
     const meta = document.createElement("p");
     meta.textContent = modeSummary(group.modeCounts);
     titleWrap.append(name, meta);
@@ -641,6 +650,12 @@
     const raw = String(mode || "Other").trim();
     if (raw === "AUTO" || raw === "AUTO SR") return "SR";
     return raw;
+  }
+
+  function classToken(className) {
+    return String(className || "")
+      .toLowerCase()
+      .replace(/[^a-z]/g, "");
   }
 
   function modeOrder(mode) {
