@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SoftRes Summary</title>
+    <link rel="stylesheet" href="assets/styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">WoW 3.3.5a raid loot</p>
+          <h1>SoftRes Summary</h1>
+          <p id="sourceMeta" class="muted">Loading saved variables...</p>
+        </div>
+        <label class="fileButton" title="Load another SoftResRoller.lua file in this browser">
+          <input id="fileInput" type="file" accept=".lua,.txt">
+          Load Lua
+        </label>
+      </header>
+
+      <section id="status" class="status" hidden></section>
+
+      <section class="toolbar" aria-label="Filters">
+        <div class="field raidField">
+          <label for="raidSelect">Raid</label>
+          <select id="raidSelect"></select>
+        </div>
+        <div class="field">
+          <label for="winnerFilter">Winner</label>
+          <input id="winnerFilter" type="search" placeholder="All winners">
+        </div>
+        <div class="field">
+          <label for="typeFilter">Type</label>
+          <select id="typeFilter"></select>
+        </div>
+        <button id="editSpecsButton" class="editToggle" type="button" aria-pressed="false">Edit specs</button>
+      </section>
+
+      <section class="summaryHead">
+        <div>
+          <p class="eyebrow">Showing</p>
+          <h2 id="raidTitle">Raid summary</h2>
+        </div>
+        <div class="summaryStats">
+          <div>
+            <span>Players</span>
+            <strong id="statPlayers">0</strong>
+          </div>
+          <div>
+            <span>Items</span>
+            <strong id="statItems">0</strong>
+          </div>
+          <div>
+            <span>Raids saved</span>
+            <strong id="statRaids">0</strong>
+          </div>
+        </div>
+      </section>
+
+      <section id="summaryList" class="summaryList" aria-label="Raid loot summary"></section>
+    </main>
+
+    <script src="assets/data.js"></script>
+    <script src="assets/app.js"></script>
+  </body>
+</html>
