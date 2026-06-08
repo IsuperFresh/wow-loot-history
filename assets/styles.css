@@ -258,22 +258,16 @@ h2 {
 
 .lootLine {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 330px;
-  gap: 18px;
+  grid-template-columns: 145px minmax(0, 1fr) 70px 118px;
+  gap: 12px;
   align-items: baseline;
   min-height: 34px;
   color: var(--text);
 }
 
-.lootItem {
-  display: grid;
-  grid-template-columns: 170px minmax(0, 1fr);
-  gap: 10px;
-  min-width: 0;
-}
-
 .slotName {
   color: var(--text);
+  min-width: 0;
 }
 
 .itemName {
@@ -283,11 +277,29 @@ h2 {
   overflow-wrap: anywhere;
 }
 
+a.itemName {
+  text-decoration: none;
+}
+
+a.itemName:hover {
+  text-decoration: underline;
+}
+
+.lootMode,
 .lootDate {
   color: var(--text);
   font-size: 1rem;
-  text-align: left;
   white-space: nowrap;
+}
+
+.lootMode {
+  font-weight: 850;
+  text-align: center;
+}
+
+.lootDate {
+  color: var(--muted);
+  text-align: right;
 }
 
 .modeMS {
@@ -331,14 +343,30 @@ h2 {
   }
 
   .lootLine {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr) auto;
     gap: 3px;
     padding: 8px 0;
     border-top: 1px solid rgba(95, 70, 31, 0.32);
   }
 
-  .lootItem {
-    grid-template-columns: 92px minmax(0, 1fr);
+  .slotName {
+    grid-column: 1 / -1;
+    color: var(--muted);
+  }
+
+  .itemName {
+    grid-column: 1 / 2;
+  }
+
+  .lootMode {
+    grid-column: 2 / 3;
+    grid-row: 2;
+    text-align: right;
+  }
+
+  .lootDate {
+    grid-column: 1 / -1;
+    text-align: left;
   }
 }
 

@@ -496,6 +496,7 @@
     els.statItems.textContent = rows.length;
     els.statRaids.textContent = model.raids.length || unique(model.winners.map((row) => row.raidId)).length;
     renderSummary(groups);
+    refreshWowheadLinks();
   }
 
   function buildLootGroups(lootRows) {
@@ -596,21 +597,37 @@
   function lootLine(item) {
     const row = document.createElement("div");
     row.className = "lootLine";
-    const left = document.createElement("div");
-    left.className = "lootItem";
+
     const slot = document.createElement("span");
     slot.className = "slotName";
     slot.textContent = `${item.slot || "Other"}:`;
-    const itemName = document.createElement("span");
+
+    const itemName = item.itemId ? document.createElement("a") : document.createElement("span");
     itemName.className = "itemName";
     itemName.textContent = `[${item.item || "Unknown item"}]`;
-    left.append(slot, itemName);
+    if (item.itemId) {
+      itemName.href = `https://www.wowhead.com/wotlk/item=${item.itemId}`;
+      itemName.target = "_blank";
+      itemName.rel = "noreferrer";
+      itemName.dataset.wowhead = `item=${item.itemId}`;
+    }
 
-    const right = document.createElement("div");
-    right.className = `lootDate mode${String(item.mode || "").replace(/[^A-Za-z0-9]/g, "")}`;
-    right.textContent = [item.source || "Unknown boss", `${item.date || "-"} - ${item.mode}`].join(" | ");
-    row.append(left, right);
+    const mode = document.createElement("span");
+    mode.className = `lootMode mode${String(item.mode || "").replace(/[^A-Za-z0-9]/g, "")}`;
+    mode.textContent = item.mode || "Other";
+
+    const date = document.createElement("span");
+    date.className = "lootDate";
+    date.textContent = item.date || "-";
+
+    row.append(slot, itemName, mode, date);
     return row;
+  }
+
+  function refreshWowheadLinks() {
+    if (window.$WowheadPower && typeof window.$WowheadPower.refreshLinks === "function") {
+      window.$WowheadPower.refreshLinks();
+    }
   }
 
   function modeSummary(modeCounts) {
