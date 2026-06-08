@@ -274,10 +274,14 @@ h2 {
   min-width: 0;
   color: var(--purple);
   font-size: 1.1rem;
+  justify-self: start;
   overflow-wrap: anywhere;
 }
 
 a.itemName {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
   text-decoration: none;
 }
 
