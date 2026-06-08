@@ -8,7 +8,6 @@
     raidSelect: document.getElementById("raidSelect"),
     winnerFilter: document.getElementById("winnerFilter"),
     typeFilter: document.getElementById("typeFilter"),
-    editSpecsButton: document.getElementById("editSpecsButton"),
     raidTitle: document.getElementById("raidTitle"),
     statPlayers: document.getElementById("statPlayers"),
     statItems: document.getElementById("statItems"),
@@ -16,25 +15,8 @@
     summaryList: document.getElementById("summaryList")
   };
 
-  const PLAYER_OVERRIDES_KEY = "softres.playerSpecOverrides.v1";
-  const CLASS_SPECS = {
-    Deathknight: ["Blood", "Frost", "Unholy"],
-    Druid: ["Balance", "Feral", "Restoration"],
-    Hunter: ["Beast Mastery", "Marksmanship", "Survival"],
-    Mage: ["Arcane", "Fire", "Frost"],
-    Paladin: ["Holy", "Protection", "Retribution"],
-    Priest: ["Discipline", "Holy", "Shadow"],
-    Rogue: ["Assassination", "Combat", "Subtlety", "Daggers", "Swords"],
-    Shaman: ["Elemental", "Enhancement", "Restoration"],
-    Warlock: ["Affliction", "Demonology", "Destruction"],
-    Warrior: ["Arms", "Fury", "Protection"]
-  };
-  const CLASS_NAMES = Object.keys(CLASS_SPECS);
-
   let rawDb = null;
   let extraCsvText = "";
-  let editSpecs = false;
-  let playerOverrides = loadPlayerOverrides();
   let model = {
     winners: [],
     reserves: [],
@@ -519,38 +501,7 @@
       player.items.push({ ...row, mode });
     });
 
-    return Array.from(map.values()).map((group) => {
-      const override = playerOverrides[normalizeName(group.name)];
-      if (override) {
-        group.className = override.className || "";
-        group.spec = override.spec || "";
-      }
-      return group;
-    }).sort((a, b) => b.items.length - a.items.length || a.name.localeCompare(b.name));
-  }
-
-  function loadPlayerOverrides() {
-    try {
-      return JSON.parse(localStorage.getItem(PLAYER_OVERRIDES_KEY) || "{}");
-    } catch {
-      return {};
-    }
-  }
-
-  function savePlayerOverrides() {
-    localStorage.setItem(PLAYER_OVERRIDES_KEY, JSON.stringify(playerOverrides));
-  }
-
-  function setPlayerOverride(playerName, className, spec) {
-    const key = normalizeName(playerName);
-    if (!key) return;
-    if (!className && !spec) {
-      delete playerOverrides[key];
-    } else {
-      playerOverrides[key] = { className, spec };
-    }
-    savePlayerOverrides();
-    render();
+    return Array.from(map.values()).sort((a, b) => b.items.length - a.items.length || a.name.localeCompare(b.name));
   }
 
   function renderSummary(groups) {
@@ -613,9 +564,6 @@
     const meta = document.createElement("p");
     meta.textContent = modeSummary(group.modeCounts);
     titleWrap.append(name, meta);
-    if (editSpecs) {
-      titleWrap.append(specEditor(group));
-    }
     const count = document.createElement("strong");
     count.className = "countBadge";
     count.textContent = `count ${group.items.length}`;
@@ -627,46 +575,6 @@
 
     card.append(header, list);
     return card;
-  }
-
-  function specEditor(group) {
-    const editor = document.createElement("div");
-    editor.className = "specEditor";
-
-    const classSelect = document.createElement("select");
-    classSelect.setAttribute("aria-label", `${group.name} class`);
-    classSelect.append(new Option("Class", ""));
-    CLASS_NAMES.forEach((className) => classSelect.append(new Option(className, className)));
-    classSelect.value = CLASS_NAMES.includes(group.className) ? group.className : "";
-
-    const specSelect = document.createElement("select");
-    specSelect.setAttribute("aria-label", `${group.name} spec`);
-    fillSpecSelect(specSelect, classSelect.value, group.spec);
-
-    classSelect.addEventListener("change", () => {
-      const specs = CLASS_SPECS[classSelect.value] || [];
-      const nextSpec = specs.includes(specSelect.value) ? specSelect.value : "";
-      fillSpecSelect(specSelect, classSelect.value, nextSpec);
-      setPlayerOverride(group.name, classSelect.value, specSelect.value);
-    });
-
-    specSelect.addEventListener("change", () => {
-      setPlayerOverride(group.name, classSelect.value, specSelect.value);
-    });
-
-    editor.append(classSelect, specSelect);
-    return editor;
-  }
-
-  function fillSpecSelect(select, className, currentSpec) {
-    select.innerHTML = "";
-    select.append(new Option("Spec", ""));
-    const specs = CLASS_SPECS[className] || [];
-    specs.forEach((spec) => select.append(new Option(spec, spec)));
-    if (currentSpec && !specs.includes(currentSpec)) {
-      select.append(new Option(currentSpec, currentSpec));
-    }
-    select.value = currentSpec || "";
   }
 
   function lootLine(item) {
@@ -715,14 +623,6 @@
 
   [els.raidSelect, els.winnerFilter, els.typeFilter].forEach((control) => control.addEventListener("input", render));
 
-  els.editSpecsButton.addEventListener("click", () => {
-    editSpecs = !editSpecs;
-    els.editSpecsButton.classList.toggle("isActive", editSpecs);
-    els.editSpecsButton.setAttribute("aria-pressed", editSpecs ? "true" : "false");
-    els.editSpecsButton.textContent = editSpecs ? "Done editing" : "Edit specs";
-    render();
-  });
-
   els.fileInput.addEventListener("change", async () => {
     const file = els.fileInput.files[0];
     if (!file) return;
@@ -733,7 +633,7 @@
   const payload = window.SOFTRES_PAYLOAD;
   const payloadLua = typeof payload?.lua === "string" ? payload.lua : payload?.lua?.value;
   if (payload && payloadLua) {
-    loadLua(payloadLua, "Loaded from SoftResRoller.lua", payload.defaultCsv || "");
+    loadLua(payloadLua, "Guild raid loot history", payload.defaultCsv || "");
   } else {
     setStatus("No generated data found. Run update.ps1 or use Load Lua.");
     els.sourceMeta.textContent = "Waiting for SoftResRoller.lua";

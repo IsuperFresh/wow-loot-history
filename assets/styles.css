@@ -61,11 +61,44 @@ select {
 }
 
 .topbar {
+  position: relative;
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
   gap: 16px;
-  padding: 18px 20px;
+  min-height: 260px;
+  padding: 24px;
+  overflow: hidden;
+}
+
+.heroImage {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.58;
+}
+
+.hero::after {
+  position: absolute;
+  inset: 0;
+  content: "";
+  background:
+    linear-gradient(90deg, rgba(5, 5, 4, 0.88) 0%, rgba(5, 5, 4, 0.54) 48%, rgba(5, 5, 4, 0.78) 100%),
+    linear-gradient(0deg, rgba(5, 5, 4, 0.55), transparent 52%);
+}
+
+.heroContent,
+.topbar .fileButton {
+  position: relative;
+  z-index: 1;
+}
+
+.heroSubtitle {
+  margin-bottom: 4px;
+  color: var(--text);
+  font-size: 1.08rem;
 }
 
 .eyebrow {
@@ -136,7 +169,7 @@ h2 {
 
 .toolbar {
   display: grid;
-  grid-template-columns: minmax(260px, 1.2fr) minmax(190px, 0.8fr) minmax(150px, 0.5fr) 132px;
+  grid-template-columns: minmax(260px, 1.2fr) minmax(190px, 0.8fr) minmax(150px, 0.5fr);
   gap: 12px;
   margin-top: 14px;
   padding: 14px;
@@ -174,23 +207,6 @@ h2 {
 .field select:focus {
   border-color: var(--gold);
   box-shadow: 0 0 0 3px rgba(255, 224, 27, 0.14);
-}
-
-.editToggle {
-  align-self: end;
-  height: 40px;
-  border: 1px solid #7b1c16;
-  border-radius: 4px;
-  color: var(--gold);
-  background: #5a0908;
-  font-weight: 850;
-  cursor: pointer;
-}
-
-.editToggle.isActive {
-  color: #17120b;
-  border-color: var(--gold);
-  background: var(--gold);
 }
 
 .summaryHead {
@@ -256,27 +272,6 @@ h2 {
   margin-bottom: 0;
   color: var(--orange);
   font-size: 0.98rem;
-}
-
-.specEditor {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-top: 10px;
-}
-
-.specEditor select {
-  width: 180px;
-  height: 34px;
-  border: 1px solid var(--line-soft);
-  border-radius: 4px;
-  color: var(--text);
-  background: #090806;
-  outline: none;
-}
-
-.specEditor select:focus {
-  border-color: var(--gold);
 }
 
 .countBadge {
@@ -363,10 +358,6 @@ h2 {
 
   .toolbar {
     grid-template-columns: 1fr;
-  }
-
-  .editToggle {
-    width: 100%;
   }
 
   .lootLine {
