@@ -4,7 +4,6 @@
   const els = {
     sourceMeta: document.getElementById("sourceMeta"),
     status: document.getElementById("status"),
-    fileInput: document.getElementById("fileInput"),
     raidSelect: document.getElementById("raidSelect"),
     winnerFilter: document.getElementById("winnerFilter"),
     typeFilter: document.getElementById("typeFilter"),
@@ -314,7 +313,8 @@
     }));
 
     const itemSources = buildItemSources(allReserveRows);
-    const playerInfo = buildPlayerInfo(winners, allReserveRows);
+    const playerOverrides = parsePlayerSpecOverrides(db.playerSpecOverrides);
+    const playerInfo = buildPlayerInfo(winners, allReserveRows, playerOverrides);
     winners.forEach((row) => {
       const info = playerInfo.get(normalizeName(row.winner));
       if (!row.className && info?.className) row.className = info.className;
@@ -379,7 +379,21 @@
     return map;
   }
 
-  function buildPlayerInfo(winners, reserves) {
+  function parsePlayerSpecOverrides(overrides) {
+    const rows = [];
+    if (!overrides || typeof overrides !== "object") return rows;
+    Object.entries(overrides).forEach(([name, value]) => {
+      if (!value || typeof value !== "object") return;
+      rows.push({
+        player: name,
+        className: value.class || value.className || "",
+        spec: value.spec || ""
+      });
+    });
+    return rows;
+  }
+
+  function buildPlayerInfo(winners, reserves, overrides = []) {
     const map = new Map();
     const remember = (name, className, spec) => {
       const key = normalizeName(name);
@@ -392,6 +406,11 @@
 
     reserves.forEach((row) => remember(row.player, row.className, row.spec));
     winners.forEach((row) => remember(row.winner, row.className, row.spec));
+    overrides.forEach((row) => {
+      const key = normalizeName(row.player);
+      if (!key) return;
+      map.set(key, { className: row.className || "", spec: row.spec || "" });
+    });
     return map;
   }
 
@@ -620,21 +639,12 @@
 
   [els.raidSelect, els.winnerFilter, els.typeFilter].forEach((control) => control.addEventListener("input", render));
 
-  if (els.fileInput) {
-    els.fileInput.addEventListener("change", async () => {
-      const file = els.fileInput.files[0];
-      if (!file) return;
-      const text = await file.text();
-      loadLua(text, `Loaded ${file.name} in this browser`, extraCsvText);
-    });
-  }
-
   const payload = window.SOFTRES_PAYLOAD;
   const payloadLua = typeof payload?.lua === "string" ? payload.lua : payload?.lua?.value;
   if (payload && payloadLua) {
     loadLua(payloadLua, "Guild raid loot history", payload.defaultCsv || "");
   } else {
-    setStatus("No generated data found. Run update.ps1 or use Load Lua.");
+    setStatus("No generated data found. Run update-site.bat to rebuild assets/data.js.");
     els.sourceMeta.textContent = "Waiting for SoftResRoller.lua";
   }
 })();
