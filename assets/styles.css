@@ -64,8 +64,6 @@ select {
   position: relative;
   display: flex;
   align-items: flex-end;
-  justify-content: space-between;
-  gap: 16px;
   min-height: 260px;
   padding: 24px;
   overflow: hidden;
@@ -89,16 +87,9 @@ select {
     linear-gradient(0deg, rgba(5, 5, 4, 0.55), transparent 52%);
 }
 
-.heroContent,
-.topbar .fileButton {
+.heroContent {
   position: relative;
   z-index: 1;
-}
-
-.heroSubtitle {
-  margin-bottom: 4px;
-  color: var(--text);
-  font-size: 1.08rem;
 }
 
 .eyebrow {
@@ -133,29 +124,6 @@ h2 {
 .muted {
   margin-bottom: 0;
   color: var(--muted);
-}
-
-.fileButton {
-  display: inline-flex;
-  min-width: 112px;
-  height: 40px;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid #7b1c16;
-  border-radius: 4px;
-  color: var(--gold);
-  background: #5a0908;
-  font-weight: 850;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.fileButton input {
-  position: absolute;
-  inline-size: 1px;
-  block-size: 1px;
-  opacity: 0;
-  pointer-events: none;
 }
 
 .status {

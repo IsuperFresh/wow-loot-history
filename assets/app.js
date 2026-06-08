@@ -4,7 +4,6 @@
   const els = {
     sourceMeta: document.getElementById("sourceMeta"),
     status: document.getElementById("status"),
-    fileInput: document.getElementById("fileInput"),
     raidSelect: document.getElementById("raidSelect"),
     winnerFilter: document.getElementById("winnerFilter"),
     typeFilter: document.getElementById("typeFilter"),
@@ -444,9 +443,6 @@
       ? model.raids
       : unique(model.winners.map((row) => row.raidId).filter(Boolean)).map((id) => ({ id, title: id }));
     fillSelect(els.raidSelect, "All raids", raidOptions.map((raid) => ({ label: raid.title, value: raid.id })));
-    if (!els.raidSelect.value && raidOptions.length) {
-      els.raidSelect.value = raidOptions[0].id;
-    }
     fillSelect(els.typeFilter, "All types", unique(model.winners.map((row) => displayMode(row.mode))).sort());
   }
 
@@ -622,13 +618,6 @@
   }
 
   [els.raidSelect, els.winnerFilter, els.typeFilter].forEach((control) => control.addEventListener("input", render));
-
-  els.fileInput.addEventListener("change", async () => {
-    const file = els.fileInput.files[0];
-    if (!file) return;
-    const text = await file.text();
-    loadLua(text, `Loaded ${file.name} in this browser`);
-  });
 
   const payload = window.SOFTRES_PAYLOAD;
   const payloadLua = typeof payload?.lua === "string" ? payload.lua : payload?.lua?.value;
