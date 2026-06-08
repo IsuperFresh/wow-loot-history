@@ -8,6 +8,8 @@ Open `index.html` in a browser.
 
 ## Update data
 
+Easy way: double-click `update-site.bat`.
+
 Run this from PowerShell:
 
 ```powershell
@@ -35,4 +37,4 @@ If the WoW file moves, pass a new path:
 ## Free hosting
 
 Upload this whole folder to GitHub Pages, Cloudflare Pages, or Netlify.
-After each raid, run `update.ps1`, then upload or push the changed files again.
+After each raid, run `update-site.bat`, then upload or push the changed `assets\data.js` file again.
