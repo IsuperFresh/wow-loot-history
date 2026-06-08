@@ -4,6 +4,7 @@
   const els = {
     sourceMeta: document.getElementById("sourceMeta"),
     status: document.getElementById("status"),
+    fileInput: document.getElementById("fileInput"),
     raidSelect: document.getElementById("raidSelect"),
     winnerFilter: document.getElementById("winnerFilter"),
     typeFilter: document.getElementById("typeFilter"),
@@ -618,6 +619,15 @@
   }
 
   [els.raidSelect, els.winnerFilter, els.typeFilter].forEach((control) => control.addEventListener("input", render));
+
+  if (els.fileInput) {
+    els.fileInput.addEventListener("change", async () => {
+      const file = els.fileInput.files[0];
+      if (!file) return;
+      const text = await file.text();
+      loadLua(text, `Loaded ${file.name} in this browser`, extraCsvText);
+    });
+  }
 
   const payload = window.SOFTRES_PAYLOAD;
   const payloadLua = typeof payload?.lua === "string" ? payload.lua : payload?.lua?.value;
