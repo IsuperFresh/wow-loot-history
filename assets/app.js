@@ -18,7 +18,6 @@
   let rawDb = null;
   let extraCsvText = "";
   let activeView = "loot";
-  let attendanceSort = "rate";
   let model = {
     winners: [],
     reserves: [],
@@ -640,8 +639,7 @@
     header.append(title, stats);
 
     const players = attendanceRows(records, roster);
-    const visibleRows = players.sort(sortAttendanceRows);
-    const controls = attendanceControls(players.length, visibleRows.length);
+    const visibleRows = players.sort((a, b) => b.percent - a.percent || b.attended - a.attended || a.name.localeCompare(b.name));
     const groups = document.createElement("div");
     groups.className = "attendanceGroups";
 
@@ -650,9 +648,9 @@
     const missing = visibleRows.filter((row) => row.attended === 0);
     groups.append(attendanceGroupSection("Full attendance", full));
     groups.append(attendanceGroupSection("Partial attendance", partial));
-    groups.append(attendanceGroupSection("No attendance", missing));
+    if (missing.length) groups.append(attendanceGroupSection("No attendance", missing));
 
-    card.append(header, controls, groups);
+    card.append(header, groups);
     return card;
   }
 
@@ -709,45 +707,6 @@
       const percent = total ? Math.round((attended / total) * 100) : 0;
       return { name, attended, total, missed, percent };
     });
-  }
-
-  function sortAttendanceRows(a, b) {
-    if (attendanceSort === "name") return a.name.localeCompare(b.name);
-    return b.percent - a.percent || b.attended - a.attended || a.name.localeCompare(b.name);
-  }
-
-  function attendanceControls(totalRows, visibleRows) {
-    const controls = document.createElement("div");
-    controls.className = "attendanceControls";
-    if (attendanceSort !== "rate" && attendanceSort !== "name") attendanceSort = "rate";
-    controls.append(attendanceControlGroup("Sort", [
-      ["rate", "Rate"],
-      ["name", "Name"]
-    ], attendanceSort, "attendanceSort"));
-
-    const count = document.createElement("span");
-    count.className = "attendanceControlCount";
-    count.textContent = `${visibleRows}/${totalRows}`;
-    controls.append(count);
-    return controls;
-  }
-
-  function attendanceControlGroup(label, options, active, key) {
-    const group = document.createElement("div");
-    group.className = "attendanceControlGroup";
-    const caption = document.createElement("span");
-    caption.textContent = label;
-    group.append(caption);
-    options.forEach(([value, text]) => {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "attendanceControlButton";
-      button.dataset[key] = value;
-      button.textContent = text;
-      if (value === active) button.classList.add("active");
-      group.append(button);
-    });
-    return group;
   }
 
   function attendanceGroupSection(title, rows) {
@@ -973,13 +932,6 @@
       els.viewTabs.forEach((item) => item.classList.toggle("active", item === button));
       render();
     });
-  });
-  els.summaryList.addEventListener("click", (event) => {
-    const sortButton = event.target.closest("[data-attendance-sort]");
-    if (sortButton) {
-      attendanceSort = sortButton.dataset.attendanceSort || "rate";
-      render();
-    }
   });
 
   const payload = window.SOFTRES_PAYLOAD;

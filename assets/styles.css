@@ -466,51 +466,10 @@ a.itemName:hover {
   padding: 8px 18px 18px;
 }
 
-.attendanceControls {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 18px 12px;
-  border-top: 1px solid rgba(95, 70, 31, 0.28);
-  flex-wrap: wrap;
-}
-
-.attendanceControlGroup {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.attendanceControlGroup > span,
-.attendanceControlCount {
-  color: var(--muted);
-  font-size: 0.78rem;
-  font-weight: 850;
-  text-transform: uppercase;
-}
-
-.attendanceControlButton {
-  min-width: 62px;
-  height: 30px;
-  border: 1px solid var(--line-soft);
-  border-radius: 4px;
-  color: var(--muted);
-  background: #090806;
-  font-size: 0.9rem;
-  font-weight: 850;
-  cursor: pointer;
-}
-
-.attendanceControlButton.active {
-  border-color: var(--gold);
-  color: var(--gold);
-  background: rgba(255, 224, 27, 0.12);
-}
-
 .attendanceGroups {
   display: grid;
   gap: 14px;
-  padding: 0 18px 18px;
+  padding: 8px 18px 18px;
 }
 
 .attendanceGroupSection {
