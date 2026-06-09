@@ -7,6 +7,7 @@
     raidSelect: document.getElementById("raidSelect"),
     winnerFilter: document.getElementById("winnerFilter"),
     typeFilter: document.getElementById("typeFilter"),
+    viewTabs: document.querySelectorAll(".viewTab"),
     raidTitle: document.getElementById("raidTitle"),
     statPlayers: document.getElementById("statPlayers"),
     statItems: document.getElementById("statItems"),
@@ -16,11 +17,13 @@
 
   let rawDb = null;
   let extraCsvText = "";
+  let activeView = "loot";
   let model = {
     winners: [],
     reserves: [],
     raids: [],
-    itemSources: new Map()
+    itemSources: new Map(),
+    attendance: []
   };
 
   class LuaParser {
@@ -443,12 +446,13 @@
     els.status.textContent = message || "";
   }
 
-  function loadLua(luaText, meta, defaultCsvText = "") {
+  function loadLua(luaText, meta, defaultCsvText = "", attendanceRows = []) {
     try {
       setStatus("");
       rawDb = new LuaParser(luaText).parse();
       extraCsvText = defaultCsvText || "";
       model = normalize(rawDb, extraCsvText);
+      model.attendance = normalizeAttendance(attendanceRows);
       renderFilters();
       render();
       els.sourceMeta.textContent = meta || "Loaded from browser file";
@@ -522,6 +526,20 @@
     });
     const groups = buildLootGroups(rows);
 
+    if (activeView === "attendance") {
+      const attendanceRecords = selectedRaidId
+        ? model.attendance.filter((record) => record.raidId === selectedRaidId)
+        : model.attendance;
+      const roster = attendanceRoster();
+      const marks = attendanceRecords.reduce((sum, record) => sum + record.players.length, 0);
+      els.raidTitle.textContent = selectedRaid ? `${selectedRaid.title} attendance` : "Attendance";
+      els.statPlayers.textContent = roster.length;
+      els.statItems.textContent = marks;
+      els.statRaids.textContent = attendanceRecords.length;
+      renderAttendance(attendanceRecords, roster, selectedRaidId);
+      return;
+    }
+
     els.raidTitle.textContent = selectedRaid ? selectedRaid.title : selectedRaidId || "All raids";
     els.statPlayers.textContent = groups.length;
     els.statItems.textContent = rows.length;
@@ -562,6 +580,150 @@
     const fragment = document.createDocumentFragment();
     groups.forEach((group) => fragment.append(summaryCard(group)));
     els.summaryList.append(fragment);
+  }
+
+  function normalizeAttendance(rows) {
+    return ensureArray(rows)
+      .map((record) => ({
+        raidId: record.raidId || "",
+        url: record.url || "",
+        fetchedAt: record.fetchedAt || "",
+        players: unique(ensureArray(record.players).map((name) => String(name || "").trim()).filter(Boolean)).sort((a, b) => a.localeCompare(b)),
+        skipped: unique(ensureArray(record.skipped).map((name) => String(name || "").trim()).filter(Boolean)).sort((a, b) => a.localeCompare(b)),
+        error: record.error || ""
+      }))
+      .filter((record) => record.raidId || record.url);
+  }
+
+  function attendanceRoster() {
+    const names = [];
+    model.winners.forEach((row) => {
+      if (row.winner && row.winner !== "Disenchant items") names.push(row.winner);
+    });
+    model.attendance.forEach((record) => record.players.forEach((name) => names.push(name)));
+    return unique(names).sort((a, b) => a.localeCompare(b));
+  }
+
+  function renderAttendance(records, roster, selectedRaidId) {
+    els.summaryList.innerHTML = "";
+    if (!records.length) {
+      els.summaryList.append(empty("No attendance logs for this raid/filter yet."));
+      return;
+    }
+
+    const fragment = document.createDocumentFragment();
+    if (selectedRaidId) {
+      records.forEach((record) => fragment.append(attendanceRaidCard(record, roster)));
+    } else {
+      fragment.append(attendanceOverviewCard(records, roster));
+      records.forEach((record) => fragment.append(attendanceRaidCard(record, roster, true)));
+    }
+    els.summaryList.append(fragment);
+  }
+
+  function attendanceOverviewCard(records, roster) {
+    const card = document.createElement("article");
+    card.className = "lootCard attendanceCard";
+    const header = document.createElement("div");
+    header.className = "lootCardHeader";
+    const title = document.createElement("h3");
+    title.textContent = "All raids attendance";
+    const stats = document.createElement("div");
+    stats.className = "lootCardStats";
+    const count = document.createElement("strong");
+    count.className = "countBadge";
+    count.textContent = `${records.length} log${records.length === 1 ? "" : "s"}`;
+    const marks = document.createElement("p");
+    marks.textContent = `${records.reduce((sum, record) => sum + record.players.length, 0)} attendance marks`;
+    stats.append(count, marks);
+    header.append(title, stats);
+
+    const rows = document.createElement("div");
+    rows.className = "attendanceTable";
+    roster.forEach((name) => {
+      const attended = records.filter((record) => record.players.some((player) => normalizeName(player) === normalizeName(name))).length;
+      const percent = records.length ? Math.round((attended / records.length) * 100) : 0;
+      rows.append(attendanceRow(name, `${attended}/${records.length}`, `${percent}%`));
+    });
+
+    card.append(header, rows);
+    return card;
+  }
+
+  function attendanceRaidCard(record, roster, compact = false) {
+    const card = document.createElement("article");
+    card.className = "lootCard attendanceCard";
+    const raid = model.raids.find((item) => item.id === record.raidId);
+    const titleText = raid ? raid.title : record.raidId || "Raid log";
+
+    const header = document.createElement("div");
+    header.className = "lootCardHeader";
+    const titleWrap = document.createElement("div");
+    const title = document.createElement("h3");
+    title.textContent = titleText;
+    const meta = document.createElement("p");
+    meta.className = "attendanceMeta";
+    meta.textContent = record.error ? `Log error: ${record.error}` : `Fetched ${record.fetchedAt || "-"}`;
+    titleWrap.append(title, meta);
+
+    const stats = document.createElement("div");
+    stats.className = "lootCardStats";
+    const count = document.createElement("strong");
+    count.className = "countBadge";
+    count.textContent = `${record.players.length} present`;
+    const linkLine = document.createElement("p");
+    if (record.url) {
+      const link = document.createElement("a");
+      link.href = record.url;
+      link.target = "_blank";
+      link.rel = "noreferrer";
+      link.textContent = "Open log";
+      linkLine.append(link);
+    } else {
+      linkLine.textContent = "No log URL";
+    }
+    stats.append(count, linkLine);
+    header.append(titleWrap, stats);
+
+    const presentSet = new Set(record.players.map(normalizeName));
+    const missing = roster.filter((name) => !presentSet.has(normalizeName(name)));
+    const body = document.createElement("div");
+    body.className = "attendanceBody";
+    body.append(attendancePeopleBlock("Present", record.players, "present"));
+    if (!compact) body.append(attendancePeopleBlock("Missing", missing, "missing"));
+    if (record.skipped.length) body.append(attendancePeopleBlock("Skipped empty rows", record.skipped, "skipped"));
+    card.append(header, body);
+    return card;
+  }
+
+  function attendancePeopleBlock(title, names, kind) {
+    const block = document.createElement("section");
+    block.className = "attendanceBlock";
+    const heading = document.createElement("h4");
+    heading.textContent = `${title} (${names.length})`;
+    const list = document.createElement("div");
+    list.className = "attendancePeople";
+    names.forEach((name) => {
+      const item = document.createElement("span");
+      item.className = `attendancePerson ${kind}`;
+      item.textContent = name;
+      list.append(item);
+    });
+    block.append(heading, list);
+    return block;
+  }
+
+  function attendanceRow(name, count, percent) {
+    const row = document.createElement("div");
+    row.className = "attendanceRow";
+    const nameCell = document.createElement("span");
+    nameCell.textContent = name;
+    const countCell = document.createElement("strong");
+    countCell.textContent = count;
+    const percentCell = document.createElement("span");
+    percentCell.textContent = percent;
+    row.append(nameCell, countCell, percentCell);
+    return row;
   }
 
   function matches(row, query) {
@@ -733,11 +895,18 @@
 
     render();
   });
+  els.viewTabs.forEach((button) => {
+    button.addEventListener("click", () => {
+      activeView = button.dataset.view || "loot";
+      els.viewTabs.forEach((item) => item.classList.toggle("active", item === button));
+      render();
+    });
+  });
 
   const payload = window.SOFTRES_PAYLOAD;
   const payloadLua = typeof payload?.lua === "string" ? payload.lua : payload?.lua?.value;
   if (payload && payloadLua) {
-    loadLua(payloadLua, "Guild raid loot history", payload.defaultCsv || "");
+    loadLua(payloadLua, "Guild raid loot history", payload.defaultCsv || "", payload.attendance || []);
   } else {
     setStatus("No generated data found. Run update-site.bat to rebuild assets/data.js.");
     els.sourceMeta.textContent = "Waiting for SoftResRoller.lua";

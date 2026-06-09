@@ -145,6 +145,29 @@ h2 {
   padding: 14px;
 }
 
+.viewTabs {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.viewTab {
+  height: 38px;
+  min-width: 112px;
+  border: 1px solid var(--line-soft);
+  border-radius: 4px;
+  color: var(--muted);
+  background: #090806;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.viewTab.active {
+  border-color: var(--gold);
+  color: var(--gold);
+  background: rgba(255, 224, 27, 0.12);
+}
+
 .field label {
   display: block;
   margin-bottom: 6px;
@@ -429,6 +452,82 @@ a.itemName:hover {
   border-radius: 8px;
   color: var(--muted);
   background: var(--panel);
+}
+
+.attendanceMeta {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.attendanceBody {
+  display: grid;
+  gap: 14px;
+  padding: 8px 18px 18px;
+}
+
+.attendanceBlock h4 {
+  margin: 0 0 8px;
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
+.attendancePeople {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.attendancePerson {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 9px;
+  border: 1px solid var(--line-soft);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.28);
+  font-size: 0.92rem;
+}
+
+.attendancePerson.present {
+  color: var(--green);
+}
+
+.attendancePerson.missing {
+  color: var(--red);
+}
+
+.attendancePerson.skipped {
+  color: var(--muted);
+}
+
+.attendanceTable {
+  display: grid;
+  gap: 2px;
+  padding: 8px 18px 18px;
+}
+
+.attendanceRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 80px 70px;
+  gap: 12px;
+  min-height: 30px;
+  align-items: center;
+  border-top: 1px solid rgba(95, 70, 31, 0.22);
+}
+
+.attendanceRow span:first-child {
+  color: var(--text);
+}
+
+.attendanceRow strong {
+  color: var(--gold);
+  text-align: right;
+}
+
+.attendanceRow span:last-child {
+  color: var(--muted);
+  text-align: right;
 }
 
 @media (max-width: 900px) {
