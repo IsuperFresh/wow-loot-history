@@ -18,7 +18,6 @@
   let rawDb = null;
   let extraCsvText = "";
   let activeView = "loot";
-  let attendanceFilter = "all";
   let attendanceSort = "rate";
   let model = {
     winners: [],
@@ -641,21 +640,17 @@
     header.append(title, stats);
 
     const players = attendanceRows(records, roster);
-    const visibleRows = filterAttendanceRows(players).sort(sortAttendanceRows);
+    const visibleRows = players.sort(sortAttendanceRows);
     const controls = attendanceControls(players.length, visibleRows.length);
     const groups = document.createElement("div");
     groups.className = "attendanceGroups";
 
-    if (attendanceFilter === "all") {
-      const full = visibleRows.filter((row) => row.attended === row.total && row.total > 0);
-      const partial = visibleRows.filter((row) => row.attended > 0 && row.attended < row.total);
-      const missing = visibleRows.filter((row) => row.attended === 0);
-      groups.append(attendanceGroupSection("Full attendance", full));
-      groups.append(attendanceGroupSection("Partial attendance", partial));
-      groups.append(attendanceGroupSection("No attendance", missing));
-    } else {
-      groups.append(attendanceGroupSection(attendanceFilterTitle(attendanceFilter), visibleRows));
-    }
+    const full = visibleRows.filter((row) => row.attended === row.total && row.total > 0);
+    const partial = visibleRows.filter((row) => row.attended > 0 && row.attended < row.total);
+    const missing = visibleRows.filter((row) => row.attended === 0);
+    groups.append(attendanceGroupSection("Full attendance", full));
+    groups.append(attendanceGroupSection("Partial attendance", partial));
+    groups.append(attendanceGroupSection("No attendance", missing));
 
     card.append(header, controls, groups);
     return card;
@@ -716,40 +711,18 @@
     });
   }
 
-  function filterAttendanceRows(rows) {
-    if (attendanceFilter === "full") return rows.filter((row) => row.total > 0 && row.attended === row.total);
-    if (attendanceFilter === "partial") return rows.filter((row) => row.attended > 0 && row.attended < row.total);
-    if (attendanceFilter === "missing") return rows.filter((row) => row.attended === 0);
-    return rows;
-  }
-
   function sortAttendanceRows(a, b) {
     if (attendanceSort === "name") return a.name.localeCompare(b.name);
-    if (attendanceSort === "missed") return b.missed - a.missed || a.name.localeCompare(b.name);
     return b.percent - a.percent || b.attended - a.attended || a.name.localeCompare(b.name);
-  }
-
-  function attendanceFilterTitle(value) {
-    return {
-      full: "Full attendance",
-      partial: "Partial attendance",
-      missing: "No attendance"
-    }[value] || "All players";
   }
 
   function attendanceControls(totalRows, visibleRows) {
     const controls = document.createElement("div");
     controls.className = "attendanceControls";
-    controls.append(attendanceControlGroup("Filter", [
-      ["all", "All"],
-      ["full", "Full"],
-      ["partial", "Partial"],
-      ["missing", "Missing"]
-    ], attendanceFilter, "attendanceFilter"));
+    if (attendanceSort !== "rate" && attendanceSort !== "name") attendanceSort = "rate";
     controls.append(attendanceControlGroup("Sort", [
       ["rate", "Rate"],
-      ["name", "Name"],
-      ["missed", "Missed"]
+      ["name", "Name"]
     ], attendanceSort, "attendanceSort"));
 
     const count = document.createElement("span");
@@ -1002,13 +975,6 @@
     });
   });
   els.summaryList.addEventListener("click", (event) => {
-    const filterButton = event.target.closest("[data-attendance-filter]");
-    if (filterButton) {
-      attendanceFilter = filterButton.dataset.attendanceFilter || "all";
-      render();
-      return;
-    }
-
     const sortButton = event.target.closest("[data-attendance-sort]");
     if (sortButton) {
       attendanceSort = sortButton.dataset.attendanceSort || "rate";
