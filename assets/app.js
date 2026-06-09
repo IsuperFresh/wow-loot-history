@@ -18,6 +18,8 @@
   let rawDb = null;
   let extraCsvText = "";
   let activeView = "loot";
+  let attendanceFilter = "all";
+  let attendanceSort = "rate";
   let model = {
     winners: [],
     reserves: [],
@@ -598,7 +600,7 @@
   function attendanceRoster() {
     const names = [];
     model.winners.forEach((row) => {
-      if (row.winner && row.winner !== "Disenchant items") names.push(row.winner);
+      if (row.winner && !isDisenchantName(row.winner)) names.push(row.winner);
     });
     model.attendance.forEach((record) => record.players.forEach((name) => names.push(name)));
     return unique(names).sort((a, b) => a.localeCompare(b));
@@ -638,15 +640,24 @@
     stats.append(count, marks);
     header.append(title, stats);
 
-    const rows = document.createElement("div");
-    rows.className = "attendanceTable";
-    roster.forEach((name) => {
-      const attended = records.filter((record) => record.players.some((player) => normalizeName(player) === normalizeName(name))).length;
-      const percent = records.length ? Math.round((attended / records.length) * 100) : 0;
-      rows.append(attendanceRow(name, `${attended}/${records.length}`, `${percent}%`));
-    });
+    const players = attendanceRows(records, roster);
+    const visibleRows = filterAttendanceRows(players).sort(sortAttendanceRows);
+    const controls = attendanceControls(players.length, visibleRows.length);
+    const groups = document.createElement("div");
+    groups.className = "attendanceGroups";
 
-    card.append(header, rows);
+    if (attendanceFilter === "all") {
+      const full = visibleRows.filter((row) => row.attended === row.total && row.total > 0);
+      const partial = visibleRows.filter((row) => row.attended > 0 && row.attended < row.total);
+      const missing = visibleRows.filter((row) => row.attended === 0);
+      groups.append(attendanceGroupSection("Full attendance", full));
+      groups.append(attendanceGroupSection("Partial attendance", partial));
+      groups.append(attendanceGroupSection("No attendance", missing));
+    } else {
+      groups.append(attendanceGroupSection(attendanceFilterTitle(attendanceFilter), visibleRows));
+    }
+
+    card.append(header, controls, groups);
     return card;
   }
 
@@ -691,9 +702,91 @@
     body.className = "attendanceBody";
     body.append(attendancePeopleBlock("Present", record.players, "present"));
     if (!compact) body.append(attendancePeopleBlock("Missing", missing, "missing"));
-    if (record.skipped.length) body.append(attendancePeopleBlock("Skipped empty rows", record.skipped, "skipped"));
     card.append(header, body);
     return card;
+  }
+
+  function attendanceRows(records, roster) {
+    return roster.map((name) => {
+      const attended = records.filter((record) => record.players.some((player) => normalizeName(player) === normalizeName(name))).length;
+      const total = records.length;
+      const missed = Math.max(0, total - attended);
+      const percent = total ? Math.round((attended / total) * 100) : 0;
+      return { name, attended, total, missed, percent };
+    });
+  }
+
+  function filterAttendanceRows(rows) {
+    if (attendanceFilter === "full") return rows.filter((row) => row.total > 0 && row.attended === row.total);
+    if (attendanceFilter === "partial") return rows.filter((row) => row.attended > 0 && row.attended < row.total);
+    if (attendanceFilter === "missing") return rows.filter((row) => row.attended === 0);
+    return rows;
+  }
+
+  function sortAttendanceRows(a, b) {
+    if (attendanceSort === "name") return a.name.localeCompare(b.name);
+    if (attendanceSort === "missed") return b.missed - a.missed || a.name.localeCompare(b.name);
+    return b.percent - a.percent || b.attended - a.attended || a.name.localeCompare(b.name);
+  }
+
+  function attendanceFilterTitle(value) {
+    return {
+      full: "Full attendance",
+      partial: "Partial attendance",
+      missing: "No attendance"
+    }[value] || "All players";
+  }
+
+  function attendanceControls(totalRows, visibleRows) {
+    const controls = document.createElement("div");
+    controls.className = "attendanceControls";
+    controls.append(attendanceControlGroup("Filter", [
+      ["all", "All"],
+      ["full", "Full"],
+      ["partial", "Partial"],
+      ["missing", "Missing"]
+    ], attendanceFilter, "attendanceFilter"));
+    controls.append(attendanceControlGroup("Sort", [
+      ["rate", "Rate"],
+      ["name", "Name"],
+      ["missed", "Missed"]
+    ], attendanceSort, "attendanceSort"));
+
+    const count = document.createElement("span");
+    count.className = "attendanceControlCount";
+    count.textContent = `${visibleRows}/${totalRows}`;
+    controls.append(count);
+    return controls;
+  }
+
+  function attendanceControlGroup(label, options, active, key) {
+    const group = document.createElement("div");
+    group.className = "attendanceControlGroup";
+    const caption = document.createElement("span");
+    caption.textContent = label;
+    group.append(caption);
+    options.forEach(([value, text]) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "attendanceControlButton";
+      button.dataset[key] = value;
+      button.textContent = text;
+      if (value === active) button.classList.add("active");
+      group.append(button);
+    });
+    return group;
+  }
+
+  function attendanceGroupSection(title, rows) {
+    const section = document.createElement("section");
+    section.className = "attendanceGroupSection";
+    const heading = document.createElement("h4");
+    heading.textContent = `${title} (${rows.length})`;
+    const table = document.createElement("div");
+    table.className = "attendanceTable";
+    rows.forEach((row) => table.append(attendanceRow(row)));
+    section.append(heading, table);
+    return section;
   }
 
   function attendancePeopleBlock(title, names, kind) {
@@ -713,17 +806,23 @@
     return block;
   }
 
-  function attendanceRow(name, count, percent) {
+  function attendanceRow(player) {
     const row = document.createElement("div");
     row.className = "attendanceRow";
+    row.classList.add(player.percent === 100 ? "full" : player.percent === 0 ? "none" : "partial");
     const nameCell = document.createElement("span");
-    nameCell.textContent = name;
+    nameCell.textContent = player.name;
     const countCell = document.createElement("strong");
-    countCell.textContent = count;
+    countCell.textContent = `${player.attended}/${player.total}`;
     const percentCell = document.createElement("span");
-    percentCell.textContent = percent;
+    percentCell.textContent = `${player.percent}%`;
     row.append(nameCell, countCell, percentCell);
     return row;
+  }
+
+  function isDisenchantName(name) {
+    const key = normalizeName(name);
+    return key === "disenchant" || key === "disenchant items";
   }
 
   function matches(row, query) {
@@ -901,6 +1000,20 @@
       els.viewTabs.forEach((item) => item.classList.toggle("active", item === button));
       render();
     });
+  });
+  els.summaryList.addEventListener("click", (event) => {
+    const filterButton = event.target.closest("[data-attendance-filter]");
+    if (filterButton) {
+      attendanceFilter = filterButton.dataset.attendanceFilter || "all";
+      render();
+      return;
+    }
+
+    const sortButton = event.target.closest("[data-attendance-sort]");
+    if (sortButton) {
+      attendanceSort = sortButton.dataset.attendanceSort || "rate";
+      render();
+    }
   });
 
   const payload = window.SOFTRES_PAYLOAD;
