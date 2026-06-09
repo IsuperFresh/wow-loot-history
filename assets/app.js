@@ -463,7 +463,7 @@
       ? model.raids
       : unique(model.winners.map((row) => row.raidId).filter(Boolean)).map((id) => ({ id, title: id }));
     fillSelect(els.raidSelect, "All raids", raidOptions.map((raid) => ({ label: raid.title, value: raid.id })));
-    fillSelect(els.typeFilter, "All types", unique(model.winners.map((row) => displayMode(row.mode))).sort());
+    renderTypeFilter(unique(model.winners.map((row) => displayMode(row.mode))).sort());
   }
 
   function fillSelect(select, label, values) {
@@ -478,14 +478,45 @@
     if (options.includes(current)) select.value = current;
   }
 
+  function renderTypeFilter(values) {
+    const current = selectedTypeValues();
+    els.typeFilter.innerHTML = "";
+    const all = typeChoice("All", "", current.length === 0);
+    els.typeFilter.append(all);
+    values.forEach((value) => {
+      els.typeFilter.append(typeChoice(value, value, current.includes(value)));
+    });
+  }
+
+  function typeChoice(label, value, checked) {
+    const wrap = document.createElement("label");
+    wrap.className = "typeChoice";
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.value = value;
+    input.checked = checked;
+    const span = document.createElement("span");
+    span.textContent = label;
+    wrap.append(input, span);
+    return wrap;
+  }
+
+  function selectedTypeValues() {
+    const allChecked = els.typeFilter.querySelector('input[value=""]')?.checked;
+    if (allChecked) return [];
+    return Array.from(els.typeFilter.querySelectorAll('input[type="checkbox"]:checked'))
+      .map((input) => input.value)
+      .filter(Boolean);
+  }
+
   function render() {
     const selectedRaidId = els.raidSelect.value;
-    const selectedType = els.typeFilter.value;
+    const selectedTypes = selectedTypeValues();
     const winnerQuery = els.winnerFilter.value.trim().toLowerCase();
     const selectedRaid = model.raids.find((raid) => raid.id === selectedRaidId);
     const rows = model.winners.filter((row) => {
       if (selectedRaidId && row.raidId !== selectedRaidId) return false;
-      if (selectedType && displayMode(row.mode) !== selectedType) return false;
+      if (selectedTypes.length && !selectedTypes.includes(displayMode(row.mode))) return false;
       if (winnerQuery && !String(row.winner).toLowerCase().includes(winnerQuery)) return false;
       return true;
     });
@@ -577,8 +608,12 @@
     const titleWrap = document.createElement("div");
     const name = document.createElement("h3");
     const mainSpec = [group.className, group.spec].filter(Boolean).join(" ");
-    const playerName = document.createElement("span");
-    playerName.className = "playerName";
+    const playerName = document.createElement("a");
+    playerName.className = "playerName playerLink";
+    playerName.href = armoryUrl(group.name);
+    playerName.target = "_blank";
+    playerName.rel = "noreferrer";
+    playerName.title = `Open ${group.name} on Warmane Armory`;
     playerName.textContent = group.name;
     name.append(playerName);
     if (mainSpec) {
@@ -587,13 +622,17 @@
       specText.textContent = ` - ${mainSpec}`;
       name.append(specText);
     }
-    const meta = document.createElement("p");
-    meta.textContent = modeSummary(group.modeCounts);
-    titleWrap.append(name, meta);
+    titleWrap.append(name);
+
+    const stats = document.createElement("div");
+    stats.className = "lootCardStats";
     const count = document.createElement("strong");
     count.className = "countBadge";
     count.textContent = `count ${group.items.length}`;
-    header.append(titleWrap, count);
+    const meta = document.createElement("p");
+    meta.textContent = modeSummary(group.modeCounts);
+    stats.append(count, meta);
+    header.append(titleWrap, stats);
 
     const list = document.createElement("div");
     list.className = "lootLines";
@@ -658,6 +697,10 @@
       .replace(/[^a-z]/g, "");
   }
 
+  function armoryUrl(name) {
+    return `https://armory.warmane.com/character/${encodeURIComponent(name)}/Onyxia`;
+  }
+
   function modeOrder(mode) {
     return { MS: 1, SR: 2, OS: 3, DE: 4 }[mode] || 20;
   }
@@ -669,7 +712,27 @@
     return div;
   }
 
-  [els.raidSelect, els.winnerFilter, els.typeFilter].forEach((control) => control.addEventListener("input", render));
+  [els.raidSelect, els.winnerFilter].forEach((control) => control.addEventListener("input", render));
+  els.typeFilter.addEventListener("change", (event) => {
+    const input = event.target.closest('input[type="checkbox"]');
+    if (!input) return;
+    const allInput = els.typeFilter.querySelector('input[value=""]');
+    const modeInputs = Array.from(els.typeFilter.querySelectorAll('input[type="checkbox"]')).filter((item) => item.value);
+
+    if (!input.value && input.checked) {
+      modeInputs.forEach((item) => {
+        item.checked = false;
+      });
+    } else if (input.value && input.checked && allInput) {
+      allInput.checked = false;
+    }
+
+    if (allInput && !allInput.checked && modeInputs.every((item) => !item.checked)) {
+      allInput.checked = true;
+    }
+
+    render();
+  });
 
   const payload = window.SOFTRES_PAYLOAD;
   const payloadLua = typeof payload?.lua === "string" ? payload.lua : payload?.lua?.value;

@@ -179,6 +179,46 @@ h2 {
   box-shadow: 0 0 0 3px rgba(255, 224, 27, 0.14);
 }
 
+.typeChoices {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  flex-wrap: wrap;
+}
+
+.typeChoice {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 48px;
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 4px;
+  color: var(--muted);
+  background: #090806;
+  font-weight: 850;
+  cursor: pointer;
+  user-select: none;
+}
+
+.typeChoice input {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.typeChoice:has(input:checked) {
+  border-color: var(--gold);
+  color: var(--gold);
+  background: rgba(255, 224, 27, 0.12);
+  box-shadow: 0 0 0 2px rgba(255, 224, 27, 0.08);
+}
+
 .summaryHead {
   display: flex;
   align-items: center;
@@ -242,6 +282,14 @@ h2 {
   color: var(--gold);
 }
 
+.playerLink {
+  text-decoration: none;
+}
+
+.playerLink:hover {
+  text-decoration: underline;
+}
+
 .playerSpec.classdeathknight {
   color: #c41e3a;
 }
@@ -282,16 +330,25 @@ h2 {
   color: #c69b6d;
 }
 
-.lootCardHeader p {
-  margin-bottom: 0;
-  color: var(--orange);
-  font-size: 0.98rem;
-}
-
 .countBadge {
   color: var(--gold);
   font-size: 1rem;
   white-space: nowrap;
+}
+
+.lootCardStats {
+  display: grid;
+  justify-items: end;
+  gap: 5px;
+  color: var(--orange);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.lootCardStats p {
+  margin-bottom: 0;
+  color: var(--orange);
+  font-size: 0.98rem;
 }
 
 .lootLines {
@@ -422,6 +479,11 @@ a.itemName:hover {
   .lootCardHeader {
     flex-direction: column;
     gap: 6px;
+  }
+
+  .lootCardStats {
+    justify-items: start;
+    text-align: left;
   }
 
   .summaryStats {
