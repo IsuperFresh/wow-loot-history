@@ -37,6 +37,57 @@ function ConvertTo-Number {
   return 0
 }
 
+function ConvertTo-EnglishRequestError {
+  param([System.Exception]$ErrorObject)
+
+  if ($ErrorObject -is [System.Net.WebException]) {
+    $response = $ErrorObject.Response
+    if ($response) {
+      $statusCode = [int]$response.StatusCode
+      $statusText = [string]$response.StatusDescription
+      if ([string]::IsNullOrWhiteSpace($statusText)) {
+        $statusText = [string]$response.StatusCode
+      }
+      return "HTTP $statusCode $statusText"
+    }
+
+    if ($ErrorObject.Status) {
+      return "Request failed: $($ErrorObject.Status)"
+    }
+  }
+
+  if ($ErrorObject.Message) {
+    return "Request failed: $($ErrorObject.Message)"
+  }
+
+  return "Request failed"
+}
+
+function Invoke-UwuRequest {
+  param([string]$Url)
+
+  $currentUrl = $Url
+  for ($attempt = 0; $attempt -lt 5; $attempt++) {
+    try {
+      return Invoke-WebRequest -Uri $currentUrl -UseBasicParsing -TimeoutSec 30 -MaximumRedirection 5 -Headers @{
+        "User-Agent" = "Mozilla/5.0 SoftResRoller attendance updater"
+      }
+    } catch [System.Net.WebException] {
+      $response = $_.Exception.Response
+      $statusCode = if ($response) { [int]$response.StatusCode } else { 0 }
+      $location = if ($response) { $response.Headers["Location"] } else { "" }
+      if (($statusCode -eq 301 -or $statusCode -eq 302 -or $statusCode -eq 307 -or $statusCode -eq 308) -and $location) {
+        $base = [Uri]$currentUrl
+        $currentUrl = ([Uri]::new($base, $location)).AbsoluteUri
+        continue
+      }
+      throw (ConvertTo-EnglishRequestError $_.Exception)
+    }
+  }
+
+  throw "Too many redirects for $Url"
+}
+
 function Get-RaidLogUrls {
   param([string]$LuaText)
   $urls = [ordered]@{}
@@ -67,9 +118,7 @@ function Get-UwuAttendance {
 
   try {
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    $response = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 30 -Headers @{
-      "User-Agent" = "Mozilla/5.0 SoftResRoller attendance updater"
-    }
+    $response = Invoke-UwuRequest -Url $Url
     $html = [string]$response.Content
     $seen = @{}
     foreach ($row in [regex]::Matches($html, '<tr[\s\S]*?</tr>', 'IgnoreCase')) {
@@ -95,7 +144,7 @@ function Get-UwuAttendance {
       }
     }
   } catch {
-    $record.error = $_.Exception.Message
+    $record.error = ConvertTo-EnglishRequestError $_.Exception
   }
 
   $record.playerCount = @($record.players).Count
