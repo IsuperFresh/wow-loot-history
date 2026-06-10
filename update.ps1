@@ -5,6 +5,8 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$AttendanceMinDamageOrHealing = 200000
+$AttendanceCacheVersion = "min-damage-or-heal-200000-v1"
 
 if (-not (Test-Path -LiteralPath $Source)) {
   throw "SoftResRoller.lua was not found: $Source"
@@ -129,6 +131,7 @@ function Get-UwuAttendance {
     fetchedAt = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
     players = @()
     skipped = @()
+    minDamageOrHealing = $AttendanceMinDamageOrHealing
     error = ""
   }
 
@@ -148,9 +151,7 @@ function Get-UwuAttendance {
 
       $damageDone = if ($cells.Count -gt 7) { ConvertTo-Number $cells[7] } else { 0 }
       $healingDone = if ($cells.Count -gt 10) { ConvertTo-Number $cells[10] } else { 0 }
-      $activity = $damageDone + $healingDone
-
-      if ($activity -gt 0) {
+      if ($damageDone -ge $AttendanceMinDamageOrHealing -or $healingDone -ge $AttendanceMinDamageOrHealing) {
         if (-not $seen.ContainsKey($name)) {
           $record.players += $name
           $seen[$name] = $true
@@ -199,7 +200,7 @@ if (-not $RefreshAttendance -and (Test-Path -LiteralPath $script:attendanceCache
 
 function Get-AttendanceCacheKey {
   param([string]$Url)
-  return (ConvertFrom-LuaString $Url).Trim().TrimEnd("/").ToLowerInvariant()
+  return "$AttendanceCacheVersion|" + (ConvertFrom-LuaString $Url).Trim().TrimEnd("/").ToLowerInvariant()
 }
 
 function New-AttendanceRecordFromCache {
@@ -223,6 +224,7 @@ function New-AttendanceRecordFromCache {
     fetchedAt = [string]$Cached.fetchedAt
     players = $players
     skipped = $skipped
+    minDamageOrHealing = $AttendanceMinDamageOrHealing
     error = ""
     playerCount = $players.Count
   }
@@ -257,6 +259,7 @@ function Get-CachedOrFetchAttendance {
       fetchedAt = $record.fetchedAt
       players = @($record.players)
       skipped = @($record.skipped)
+      minDamageOrHealing = $AttendanceMinDamageOrHealing
       playerCount = @($record.players).Count
       error = ""
     }
