@@ -4,6 +4,7 @@
   const els = {
     sourceMeta: document.getElementById("sourceMeta"),
     status: document.getElementById("status"),
+    phaseSelect: document.getElementById("phaseSelect"),
     raidSelect: document.getElementById("raidSelect"),
     winnerFilter: document.getElementById("winnerFilter"),
     typeFilter: document.getElementById("typeFilter"),
@@ -25,6 +26,15 @@
     itemSources: new Map(),
     attendance: []
   };
+
+  const PHASES = [
+    { id: "", label: "All phases" },
+    { id: "phase1", label: "Phase 1 (Naxxramas, OS, EoE)" },
+    { id: "phase2", label: "Phase 2 (Ulduar)" },
+    { id: "phase3", label: "Phase 3 (ToC, Onyxia)" },
+    { id: "phase4", label: "Phase 4 (ICC)" },
+    { id: "phase5", label: "Phase 5 (Ruby Sanctum)" }
+  ];
 
   class LuaParser {
     constructor(input) {
@@ -307,13 +317,23 @@
       date: row.Date || ""
     }));
 
-    const raids = ensureArray(db.raidSnapshots).map((raid, index) => ({
-      id: raid.id || String(index + 1),
-      title: raid.title || `Raid ${index + 1}`,
-      finalizedAt: raid.finalizedAt || "",
-      winnerCount: raid.winnerCount || 0,
-      lines: ensureArray(raid.lines)
-    }));
+    const raidPhaseOverrides = db.raidPhases && typeof db.raidPhases === "object" ? db.raidPhases : {};
+    const raids = ensureArray(db.raidSnapshots).map((raid, index) => {
+      const id = raid.id || String(index + 1);
+      const title = raid.title || `Raid ${index + 1}`;
+      return {
+        id,
+        title,
+        phase: raid.phase || raidPhaseOverrides[id] || inferPhase(title),
+        finalizedAt: raid.finalizedAt || "",
+        winnerCount: raid.winnerCount || 0,
+        lines: ensureArray(raid.lines)
+      };
+    });
+    const raidPhaseMap = new Map(raids.map((raid) => [raid.id, raid.phase || ""]));
+    winners.forEach((row) => {
+      row.phase = raidPhaseMap.get(row.raidId) || inferPhase(row.raidId);
+    });
 
     const itemSources = buildItemSources(allReserveRows);
     const playerOverrides = parsePlayerSpecOverrides(db.playerSpecOverrides);
@@ -421,6 +441,30 @@
     return String(name || "").trim().toLowerCase();
   }
 
+  function phaseLabel(phaseId) {
+    return PHASES.find((phase) => phase.id === phaseId)?.label || "All phases";
+  }
+
+  function inferPhase(text) {
+    const value = normalizeName(text);
+    if (!value) return "";
+    if (value.includes("ulduar")) return "phase2";
+    if (value.includes("naxx") || value.includes("obsidian") || value.includes("eye of eternity") || /\beoe\b/.test(value) || /\bos\b/.test(value)) return "phase1";
+    if (value.includes("trial") || /\btoc\b/.test(value) || value.includes("onyxia")) return "phase3";
+    if (value.includes("icecrown") || /\bicc\b/.test(value)) return "phase4";
+    if (value.includes("ruby") || /\brs\b/.test(value)) return "phase5";
+    return "";
+  }
+
+  function raidTitle(raidId) {
+    return model.raids.find((raid) => raid.id === raidId)?.title || "";
+  }
+
+  function raidPhase(raidId) {
+    const raid = model.raids.find((item) => item.id === raidId);
+    return raid?.phase || inferPhase(raid?.title || raidId);
+  }
+
   function normItem(item) {
     return plainItem(item).trim().toLowerCase();
   }
@@ -463,11 +507,45 @@
   }
 
   function renderFilters() {
-    const raidOptions = model.raids.length
-      ? model.raids
-      : unique(model.winners.map((row) => row.raidId).filter(Boolean)).map((id) => ({ id, title: id }));
-    fillSelect(els.raidSelect, "All raids", raidOptions.map((raid) => ({ label: raid.title, value: raid.id })));
+    fillSelect(els.phaseSelect, "All phases", PHASES.slice(1).map((phase) => ({ label: phase.label, value: phase.id })));
+    renderRaidFilter();
     renderTypeFilter(unique(model.winners.map((row) => displayMode(row.mode))).sort());
+  }
+
+  function renderRaidFilter() {
+    const selectedPhase = els.phaseSelect.value;
+    const raidOptions = activeView === "attendance" ? attendanceRaidOptions() : lootRaidOptions();
+    const filteredOptions = raidOptions.filter((raid) => !selectedPhase || raid.phase === selectedPhase);
+    fillSelect(els.raidSelect, "All raids", filteredOptions.map((raid) => ({ label: raid.title, value: raid.id })));
+  }
+
+  function lootRaidOptions() {
+    const lootRaidIds = new Set(model.winners.map((row) => row.raidId).filter(Boolean));
+    const raids = model.raids.filter((raid) => lootRaidIds.has(raid.id));
+    if (raids.length) return raids;
+    return unique(model.winners.map((row) => row.raidId).filter(Boolean)).map((id) => ({
+      id,
+      title: id,
+      phase: inferPhase(id)
+    }));
+  }
+
+  function attendanceRaidOptions() {
+    const map = new Map();
+    model.raids.forEach((raid) => {
+      map.set(raid.id, raid);
+    });
+    model.attendance.forEach((record) => {
+      if (!record.raidId) return;
+      if (!map.has(record.raidId)) {
+        map.set(record.raidId, {
+          id: record.raidId,
+          title: record.title || record.raidId,
+          phase: record.phase || inferPhase(record.title || record.raidId)
+        });
+      }
+    });
+    return Array.from(map.values());
   }
 
   function fillSelect(select, label, values) {
@@ -514,11 +592,13 @@
   }
 
   function render() {
+    const selectedPhase = els.phaseSelect.value;
     const selectedRaidId = els.raidSelect.value;
     const selectedTypes = selectedTypeValues();
     const winnerQuery = els.winnerFilter.value.trim().toLowerCase();
-    const selectedRaid = model.raids.find((raid) => raid.id === selectedRaidId);
+    const selectedRaid = (activeView === "attendance" ? attendanceRaidOptions() : lootRaidOptions()).find((raid) => raid.id === selectedRaidId);
     const rows = model.winners.filter((row) => {
+      if (selectedPhase && row.phase !== selectedPhase) return false;
       if (selectedRaidId && row.raidId !== selectedRaidId) return false;
       if (selectedTypes.length && !selectedTypes.includes(displayMode(row.mode))) return false;
       if (winnerQuery && !String(row.winner).toLowerCase().includes(winnerQuery)) return false;
@@ -527,12 +607,16 @@
     const groups = buildLootGroups(rows);
 
     if (activeView === "attendance") {
-      const attendanceRecords = selectedRaidId
-        ? model.attendance.filter((record) => record.raidId === selectedRaidId)
-        : model.attendance;
-      const roster = attendanceRoster();
+      const attendanceRecords = model.attendance.filter((record) => {
+        if (selectedPhase && record.phase !== selectedPhase) return false;
+        if (selectedRaidId && record.raidId !== selectedRaidId) return false;
+        return true;
+      });
+      const roster = attendanceRoster(selectedPhase);
       const marks = attendanceRecords.reduce((sum, record) => sum + record.players.length, 0);
-      els.raidTitle.textContent = selectedRaid ? `${selectedRaid.title} attendance` : "Attendance";
+      els.raidTitle.textContent = selectedRaid
+        ? `${selectedRaid.title} attendance`
+        : selectedPhase ? `${phaseLabel(selectedPhase)} attendance` : "Attendance";
       els.statPlayers.textContent = roster.length;
       els.statItems.textContent = marks;
       els.statRaids.textContent = attendanceRecords.length;
@@ -540,10 +624,10 @@
       return;
     }
 
-    els.raidTitle.textContent = selectedRaid ? selectedRaid.title : selectedRaidId || "All raids";
+    els.raidTitle.textContent = selectedRaid ? selectedRaid.title : selectedPhase ? phaseLabel(selectedPhase) : selectedRaidId || "All raids";
     els.statPlayers.textContent = groups.length;
     els.statItems.textContent = rows.length;
-    els.statRaids.textContent = model.raids.length || unique(model.winners.map((row) => row.raidId)).length;
+    els.statRaids.textContent = selectedRaidId ? (rows.length ? 1 : 0) : unique(rows.map((row) => row.raidId)).length;
     renderSummary(groups);
     refreshWowheadLinks();
   }
@@ -584,23 +668,33 @@
 
   function normalizeAttendance(rows) {
     return ensureArray(rows)
-      .map((record) => ({
-        raidId: record.raidId || "",
-        url: record.url || "",
-        fetchedAt: record.fetchedAt || "",
-        players: unique(ensureArray(record.players).map((name) => String(name || "").trim()).filter(Boolean)).sort((a, b) => a.localeCompare(b)),
-        skipped: unique(ensureArray(record.skipped).map((name) => String(name || "").trim()).filter(Boolean)).sort((a, b) => a.localeCompare(b)),
-        error: record.error || ""
-      }))
+      .map((record) => {
+        const title = record.title || raidTitle(record.raidId) || record.raidId || "";
+        return {
+          raidId: record.raidId || "",
+          title,
+          phase: record.phase || raidPhase(record.raidId) || inferPhase(title),
+          source: record.source || "addon",
+          url: record.url || "",
+          fetchedAt: record.fetchedAt || "",
+          players: unique(ensureArray(record.players).map((name) => String(name || "").trim()).filter(Boolean)).sort((a, b) => a.localeCompare(b)),
+          skipped: unique(ensureArray(record.skipped).map((name) => String(name || "").trim()).filter(Boolean)).sort((a, b) => a.localeCompare(b)),
+          error: record.error || ""
+        };
+      })
       .filter((record) => record.raidId || record.url);
   }
 
-  function attendanceRoster() {
+  function attendanceRoster(selectedPhase = "") {
     const names = [];
     model.winners.forEach((row) => {
+      if (selectedPhase && row.phase !== selectedPhase) return;
       if (row.winner && !isDisenchantName(row.winner)) names.push(row.winner);
     });
-    model.attendance.forEach((record) => record.players.forEach((name) => names.push(name)));
+    model.attendance.forEach((record) => {
+      if (selectedPhase && record.phase !== selectedPhase) return;
+      record.players.forEach((name) => names.push(name));
+    });
     return unique(names).sort((a, b) => a.localeCompare(b));
   }
 
@@ -905,6 +999,10 @@
     return div;
   }
 
+  els.phaseSelect.addEventListener("input", () => {
+    renderRaidFilter();
+    render();
+  });
   [els.raidSelect, els.winnerFilter].forEach((control) => control.addEventListener("input", render));
   els.typeFilter.addEventListener("change", (event) => {
     const input = event.target.closest('input[type="checkbox"]');
@@ -930,6 +1028,7 @@
     button.addEventListener("click", () => {
       activeView = button.dataset.view || "loot";
       els.viewTabs.forEach((item) => item.classList.toggle("active", item === button));
+      renderRaidFilter();
       render();
     });
   });

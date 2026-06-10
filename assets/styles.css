@@ -139,7 +139,7 @@ h2 {
 
 .toolbar {
   display: grid;
-  grid-template-columns: minmax(260px, 1.2fr) minmax(190px, 0.8fr) minmax(150px, 0.5fr);
+  grid-template-columns: minmax(220px, 0.9fr) minmax(260px, 1.2fr) minmax(190px, 0.8fr) minmax(150px, 0.5fr);
   gap: 12px;
   margin-top: 14px;
   padding: 14px;

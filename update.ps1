@@ -1,6 +1,7 @@
 param(
   [string]$Source = "D:\Wow\World of Warcraft 3.3.5a\WTF\Account\ISUPERFRESH\SavedVariables\SoftResRoller.lua",
-  [string]$AddonData = "D:\Wow\World of Warcraft 3.3.5a\Interface\AddOns\SoftResRoller\SoftResRollerData.lua"
+  [string]$AddonData = "D:\Wow\World of Warcraft 3.3.5a\Interface\AddOns\SoftResRoller\SoftResRollerData.lua",
+  [switch]$RefreshAttendance
 )
 
 $ErrorActionPreference = "Stop"
@@ -81,6 +82,15 @@ function Invoke-UwuRequest {
         $currentUrl = ([Uri]::new($base, $location)).AbsoluteUri
         continue
       }
+      if ($statusCode -eq 429 -and $attempt -lt 4) {
+        $retryAfter = 0
+        if ($response -and [int]::TryParse($response.Headers["Retry-After"], [ref]$retryAfter) -and $retryAfter -gt 0) {
+          Start-Sleep -Seconds ([Math]::Min($retryAfter, 20))
+        } else {
+          Start-Sleep -Seconds (3 + ($attempt * 2))
+        }
+        continue
+      }
       throw (ConvertTo-EnglishRequestError $_.Exception)
     }
   }
@@ -104,11 +114,17 @@ function Get-RaidLogUrls {
 function Get-UwuAttendance {
   param(
     [string]$RaidId,
-    [string]$Url
+    [string]$Url,
+    [string]$Title = "",
+    [string]$Phase = "",
+    [string]$Source = "addon"
   )
 
   $record = [ordered]@{
     raidId = $RaidId
+    title = $Title
+    phase = $Phase
+    source = $Source
     url = $Url
     fetchedAt = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
     players = @()
@@ -151,9 +167,102 @@ function Get-UwuAttendance {
   return $record
 }
 
+function Get-StaticAttendanceLogs {
+  $path = Join-Path $PSScriptRoot "attendance-logs.json"
+  if (-not (Test-Path -LiteralPath $path)) { return @() }
+  $json = [string](Get-Content -LiteralPath $path -Raw)
+  if ([string]::IsNullOrWhiteSpace($json)) { return @() }
+  $items = $json | ConvertFrom-Json
+  foreach ($item in $items) {
+    Write-Output $item
+  }
+}
+
 $assetsDir = Join-Path $PSScriptRoot "assets"
 if (-not (Test-Path -LiteralPath $assetsDir)) {
   New-Item -ItemType Directory -Path $assetsDir | Out-Null
+}
+
+$script:attendanceCachePath = Join-Path $PSScriptRoot "attendance-cache.json"
+$script:attendanceCache = @{}
+$script:attendanceCacheChanged = $false
+$script:lastAttendanceFromCache = $false
+if (-not $RefreshAttendance -and (Test-Path -LiteralPath $script:attendanceCachePath)) {
+  $cacheText = [string](Get-Content -LiteralPath $script:attendanceCachePath -Raw)
+  if (-not [string]::IsNullOrWhiteSpace($cacheText)) {
+    $cacheObject = $cacheText | ConvertFrom-Json
+    foreach ($property in $cacheObject.PSObject.Properties) {
+      $script:attendanceCache[$property.Name] = $property.Value
+    }
+  }
+}
+
+function Get-AttendanceCacheKey {
+  param([string]$Url)
+  return (ConvertFrom-LuaString $Url).Trim().TrimEnd("/").ToLowerInvariant()
+}
+
+function New-AttendanceRecordFromCache {
+  param(
+    $Cached,
+    [string]$RaidId,
+    [string]$Url,
+    [string]$Title = "",
+    [string]$Phase = "",
+    [string]$Source = "addon"
+  )
+
+  $players = @($Cached.players)
+  $skipped = @($Cached.skipped)
+  return [ordered]@{
+    raidId = $RaidId
+    title = $Title
+    phase = $Phase
+    source = $Source
+    url = $Url
+    fetchedAt = [string]$Cached.fetchedAt
+    players = $players
+    skipped = $skipped
+    error = ""
+    playerCount = $players.Count
+  }
+}
+
+function Get-CachedOrFetchAttendance {
+  param(
+    [string]$RaidId,
+    [string]$Url,
+    [string]$Title = "",
+    [string]$Phase = "",
+    [string]$Source = "addon",
+    [string]$Message = "attendance"
+  )
+
+  $cacheKey = Get-AttendanceCacheKey $Url
+  if (-not $RefreshAttendance -and $script:attendanceCache.ContainsKey($cacheKey)) {
+    $cached = $script:attendanceCache[$cacheKey]
+    if (-not $cached.error -and @($cached.players).Count -gt 0) {
+      Write-Host "Using cached $Message`: $Url"
+      $script:lastAttendanceFromCache = $true
+      return New-AttendanceRecordFromCache -Cached $cached -RaidId $RaidId -Url $Url -Title $Title -Phase $Phase -Source $Source
+    }
+  }
+
+  Write-Host "Fetching $Message`: $Url"
+  $script:lastAttendanceFromCache = $false
+  $record = Get-UwuAttendance -RaidId $RaidId -Url $Url -Title $Title -Phase $Phase -Source $Source
+  if (-not $record.error -and @($record.players).Count -gt 0) {
+    $script:attendanceCache[$cacheKey] = [ordered]@{
+      url = $Url
+      fetchedAt = $record.fetchedAt
+      players = @($record.players)
+      skipped = @($record.skipped)
+      playerCount = @($record.players).Count
+      error = ""
+    }
+    $script:attendanceCacheChanged = $true
+  }
+  return $record
 }
 
 $lua = [string](Get-Content -LiteralPath $Source -Raw)
@@ -162,9 +271,26 @@ $attendance = @()
 foreach ($key in $raidLogUrls.Keys) {
   $url = [string]$raidLogUrls[$key]
   if (-not [string]::IsNullOrWhiteSpace($url)) {
-    Write-Host "Fetching attendance: $url"
-    $attendance += Get-UwuAttendance -RaidId $key -Url $url
+    $attendance += Get-CachedOrFetchAttendance -RaidId $key -Url $url -Message "attendance"
   }
+}
+
+foreach ($log in Get-StaticAttendanceLogs) {
+    $url = [string]$log.url
+  if (-not [string]::IsNullOrWhiteSpace($url)) {
+    $id = [string]$log.id
+    if ([string]::IsNullOrWhiteSpace($id)) { $id = $url }
+    $attendance += Get-CachedOrFetchAttendance -RaidId $id -Url $url -Title ([string]$log.title) -Phase ([string]$log.phase) -Source "static" -Message "static attendance"
+    if (-not $script:lastAttendanceFromCache) {
+      Start-Sleep -Milliseconds 750
+    }
+  }
+}
+
+if ($script:attendanceCacheChanged -or $RefreshAttendance) {
+  $cacheJson = $script:attendanceCache | ConvertTo-Json -Depth 8
+  Set-Content -LiteralPath $script:attendanceCachePath -Value $cacheJson -Encoding UTF8
+  Write-Host "Updated attendance cache: $script:attendanceCachePath"
 }
 
 $defaultCsv = ""
