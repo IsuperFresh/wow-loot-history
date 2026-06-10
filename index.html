@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Award of Light Loot Summary</title>
+    <link rel="stylesheet" href="assets/styles.css">
+    <script>const whTooltips = { colorLinks: true, iconizeLinks: true, renameLinks: false };</script>
+    <script src="https://wow.zamimg.com/js/tooltips.js"></script>
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar hero">
+        <img class="heroImage" src="assets/award-of-light-banner.png" alt="Award of Light guild banner">
+        <div class="heroContent">
+          <h1>Award of Light</h1>
+          <p id="sourceMeta" class="muted">Guild raid loot history</p>
+        </div>
+      </header>
+
+      <section id="status" class="status" hidden></section>
+
+      <section class="toolbar" aria-label="Filters">
+        <div class="field">
+          <label for="phaseSelect">Phase</label>
+          <select id="phaseSelect"></select>
+        </div>
+        <div class="field raidField">
+          <label for="raidSelect">Raid</label>
+          <select id="raidSelect"></select>
+        </div>
+        <div class="field">
+          <label for="winnerFilter">Winner</label>
+          <input id="winnerFilter" type="search" placeholder="All winners">
+        </div>
+        <div class="field">
+          <label for="typeFilter">Type</label>
+          <div id="typeFilter" class="typeChoices" role="group" aria-label="Type filter"></div>
+        </div>
+      </section>
+
+      <nav class="viewTabs" aria-label="Views">
+        <button class="viewTab active" type="button" data-view="loot">Loot</button>
+        <button class="viewTab" type="button" data-view="attendance">Attendance</button>
+      </nav>
+
+      <section class="summaryHead">
+        <div>
+          <p class="eyebrow">Showing</p>
+          <h2 id="raidTitle">Raid summary</h2>
+        </div>
+        <div class="summaryStats">
+          <div>
+            <span>Players</span>
+            <strong id="statPlayers">0</strong>
+          </div>
+          <div>
+            <span>Items</span>
+            <strong id="statItems">0</strong>
+          </div>
+          <div>
+            <span>Raids saved</span>
+            <strong id="statRaids">0</strong>
+          </div>
+        </div>
+      </section>
+
+      <section id="summaryList" class="summaryList" aria-label="Raid loot summary"></section>
+    </main>
+
+    <script src="assets/data.js"></script>
+    <script src="assets/app.js"></script>
+  </body>
+</html>
