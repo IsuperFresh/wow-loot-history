@@ -285,6 +285,20 @@ h2 {
   box-shadow: 0 0 0 2px var(--type-shadow);
 }
 
+.modeLegend {
+  display: flex;
+  justify-content: center;
+  gap: 6px 10px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.modeLegendItem {
+  font-size: 0.72rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
 .summaryHead {
   display: flex;
   align-items: center;
@@ -503,6 +517,58 @@ a.itemName:hover {
   font-size: 0.9rem;
 }
 
+.attendanceControls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 0 18px 8px;
+}
+
+.attendanceSortControl {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.attendanceSortControl select {
+  height: 30px;
+  min-width: 132px;
+  border: 1px solid var(--line-soft);
+  border-radius: 4px;
+  color: var(--text);
+  background: #090806;
+  font-weight: 750;
+}
+
+.attendanceBucketFilters {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.attendanceBucket {
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: 4px;
+  color: var(--muted);
+  background: #090806;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.attendanceBucket.active {
+  border-color: var(--gold);
+  color: var(--gold);
+  background: rgba(255, 224, 27, 0.12);
+}
+
 .attendanceBody {
   display: grid;
   gap: 10px;
@@ -555,6 +621,34 @@ a.itemName:hover {
 
 .attendancePerson.missing {
   color: var(--red);
+}
+
+.attendanceCardSummary {
+  display: block;
+  list-style: none;
+  cursor: pointer;
+}
+
+.attendanceCardSummary::-webkit-details-marker {
+  display: none;
+}
+
+.attendanceCardSummary .lootCardHeader {
+  position: relative;
+  padding-left: 36px;
+}
+
+.attendanceCardSummary .lootCardHeader::before {
+  position: absolute;
+  left: 18px;
+  top: 16px;
+  color: var(--gold);
+  content: "+";
+  font-weight: 900;
+}
+
+.attendanceCardCompact[open] .attendanceCardSummary .lootCardHeader::before {
+  content: "-";
 }
 
 .attendanceTable {
@@ -641,6 +735,56 @@ a.itemName:hover {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.attendanceRow .attendanceName.classdeathknight,
+.attendancePerson.classdeathknight {
+  color: #c41e3a;
+}
+
+.attendanceRow .attendanceName.classpaladin,
+.attendancePerson.classpaladin {
+  color: #f48cba;
+}
+
+.attendanceRow .attendanceName.classshaman,
+.attendancePerson.classshaman {
+  color: #0070dd;
+}
+
+.attendanceRow .attendanceName.classdruid,
+.attendancePerson.classdruid {
+  color: #ff7c0a;
+}
+
+.attendanceRow .attendanceName.classhunter,
+.attendancePerson.classhunter {
+  color: #aad372;
+}
+
+.attendanceRow .attendanceName.classmage,
+.attendancePerson.classmage {
+  color: #3fc7eb;
+}
+
+.attendanceRow .attendanceName.classpriest,
+.attendancePerson.classpriest {
+  color: #ffffff;
+}
+
+.attendanceRow .attendanceName.classrogue,
+.attendancePerson.classrogue {
+  color: #fff468;
+}
+
+.attendanceRow .attendanceName.classwarlock,
+.attendancePerson.classwarlock {
+  color: #8788ee;
+}
+
+.attendanceRow .attendanceName.classwarrior,
+.attendancePerson.classwarrior {
+  color: #c69b6d;
 }
 
 .attendanceRow strong {
