@@ -611,16 +611,19 @@ a.itemName:hover {
   padding: 0 9px;
   border: 1px solid var(--line-soft);
   border-radius: 4px;
+  color: var(--text);
   background: rgba(0, 0, 0, 0.28);
   font-size: 0.92rem;
 }
 
 .attendancePerson.present {
-  color: var(--green);
+  border-color: rgba(121, 212, 106, 0.32);
+  background: rgba(121, 212, 106, 0.05);
 }
 
 .attendancePerson.missing {
-  color: var(--red);
+  border-color: rgba(255, 100, 100, 0.28);
+  background: rgba(255, 100, 100, 0.04);
 }
 
 .attendanceCardSummary {
