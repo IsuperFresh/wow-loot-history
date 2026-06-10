@@ -139,7 +139,7 @@ h2 {
 
 .toolbar {
   display: grid;
-  grid-template-columns: minmax(220px, 0.9fr) minmax(260px, 1.2fr) minmax(190px, 0.8fr) minmax(150px, 0.5fr);
+  grid-template-columns: minmax(220px, 0.85fr) minmax(260px, 1.15fr) minmax(190px, 0.75fr) minmax(330px, 1fr);
   gap: 12px;
   margin-top: 14px;
   padding: 14px;
@@ -205,29 +205,72 @@ h2 {
 .typeChoices {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   min-height: 40px;
   flex-wrap: wrap;
 }
 
-.typeChoice {
+.typeChoices .typeChoice {
   position: relative;
+  --type-color: var(--muted);
+  --type-border: var(--line-soft);
+  --type-bg: rgba(255, 224, 27, 0.08);
+  --type-shadow: rgba(255, 224, 27, 0.08);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 48px;
+  min-width: 54px;
   height: 34px;
   padding: 0 12px;
-  border: 1px solid var(--line-soft);
+  border: 1px solid var(--type-border);
   border-radius: 4px;
-  color: var(--muted);
-  background: #090806;
+  color: var(--type-color);
+  background: rgba(9, 8, 6, 0.92);
+  margin-bottom: 0;
+  font-size: 1rem;
+  text-transform: uppercase;
   font-weight: 850;
   cursor: pointer;
   user-select: none;
 }
 
-.typeChoice input {
+.typeChoices .typeChoice.typeAll {
+  --type-color: var(--gold);
+  --type-border: rgba(255, 224, 27, 0.48);
+  --type-bg: rgba(255, 224, 27, 0.13);
+  --type-shadow: rgba(255, 224, 27, 0.1);
+}
+
+.typeChoices .typeChoice.typeSR {
+  --type-color: var(--purple);
+  --type-border: rgba(193, 92, 255, 0.48);
+  --type-bg: rgba(193, 92, 255, 0.14);
+  --type-shadow: rgba(193, 92, 255, 0.1);
+}
+
+.typeChoices .typeChoice.typeMS {
+  --type-color: var(--green);
+  --type-border: rgba(121, 212, 106, 0.48);
+  --type-bg: rgba(121, 212, 106, 0.14);
+  --type-shadow: rgba(121, 212, 106, 0.1);
+}
+
+.typeChoices .typeChoice.typeOS {
+  --type-color: var(--blue);
+  --type-border: rgba(97, 196, 255, 0.48);
+  --type-bg: rgba(97, 196, 255, 0.14);
+  --type-shadow: rgba(97, 196, 255, 0.1);
+}
+
+.typeChoices .typeChoice.typeDE {
+  --type-color: var(--red);
+  --type-border: rgba(255, 100, 100, 0.48);
+  --type-bg: rgba(255, 100, 100, 0.14);
+  --type-shadow: rgba(255, 100, 100, 0.1);
+}
+
+.typeChoices .typeChoice input {
   position: absolute;
   inline-size: 1px;
   block-size: 1px;
@@ -235,11 +278,11 @@ h2 {
   pointer-events: none;
 }
 
-.typeChoice:has(input:checked) {
-  border-color: var(--gold);
-  color: var(--gold);
-  background: rgba(255, 224, 27, 0.12);
-  box-shadow: 0 0 0 2px rgba(255, 224, 27, 0.08);
+.typeChoices .typeChoice:has(input:checked) {
+  border-color: var(--type-color);
+  color: var(--type-color);
+  background: var(--type-bg);
+  box-shadow: 0 0 0 2px var(--type-shadow);
 }
 
 .summaryHead {
@@ -462,19 +505,19 @@ a.itemName:hover {
 
 .attendanceBody {
   display: grid;
-  gap: 14px;
-  padding: 8px 18px 18px;
+  gap: 10px;
+  padding: 6px 18px 16px;
 }
 
 .attendanceGroups {
   display: grid;
-  gap: 14px;
-  padding: 8px 18px 18px;
+  gap: 16px;
+  padding: 6px 18px 18px;
 }
 
 .attendanceGroupSection {
   display: grid;
-  gap: 6px;
+  gap: 8px;
 }
 
 .attendanceGroupSection h4 {
@@ -516,16 +559,65 @@ a.itemName:hover {
 
 .attendanceTable {
   display: grid;
-  gap: 2px;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 6px;
 }
 
 .attendanceRow {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 80px 70px;
-  gap: 12px;
-  min-height: 30px;
+  grid-template-columns: minmax(0, 1fr) 48px 44px;
+  gap: 7px;
+  min-height: 28px;
   align-items: center;
-  border-top: 1px solid rgba(95, 70, 31, 0.22);
+  padding: 3px 7px;
+  border: 1px solid rgba(95, 70, 31, 0.22);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.18);
+  font-size: 0.9rem;
+}
+
+.attendanceCardCompact .lootCardHeader {
+  align-items: center;
+  padding-bottom: 6px;
+}
+
+.attendanceCardCompact .lootCardHeader h3 {
+  font-size: 1.05rem;
+}
+
+.attendanceCardCompact .attendanceMeta {
+  font-size: 0.78rem;
+}
+
+.attendanceCompactStats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.attendanceCompactStat {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.24);
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.attendanceCompactStat.present {
+  color: var(--green);
+}
+
+.attendanceCompactStat.missing {
+  color: var(--red);
+}
+
+.attendanceCompactStat.total {
+  color: var(--gold);
 }
 
 .attendanceRow.full strong,
@@ -545,6 +637,10 @@ a.itemName:hover {
 
 .attendanceRow span:first-child {
   color: var(--text);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .attendanceRow strong {

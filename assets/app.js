@@ -509,7 +509,7 @@
   function renderFilters() {
     fillSelect(els.phaseSelect, "All phases", PHASES.slice(1).map((phase) => ({ label: phase.label, value: phase.id })));
     renderRaidFilter();
-    renderTypeFilter(unique(model.winners.map((row) => displayMode(row.mode))).sort());
+    renderTypeFilter(unique(model.winners.map((row) => displayMode(row.mode))).sort((a, b) => modeOrder(a) - modeOrder(b) || a.localeCompare(b)));
   }
 
   function renderRaidFilter() {
@@ -562,10 +562,13 @@
 
   function renderTypeFilter(values) {
     const current = selectedTypeValues();
+    const orderedValues = ["SR", "MS", "OS", "DE"]
+      .filter((mode) => values.includes(mode))
+      .concat(values.filter((mode) => !["SR", "MS", "OS", "DE"].includes(mode)));
     els.typeFilter.innerHTML = "";
-    const all = typeChoice("All", "", current.length === 0);
+    const all = typeChoice("ALL", "", current.length === 0);
     els.typeFilter.append(all);
-    values.forEach((value) => {
+    orderedValues.forEach((value) => {
       els.typeFilter.append(typeChoice(value, value, current.includes(value)));
     });
   }
@@ -573,6 +576,7 @@
   function typeChoice(label, value, checked) {
     const wrap = document.createElement("label");
     wrap.className = "typeChoice";
+    wrap.classList.add(value ? `type${String(value).replace(/[^A-Za-z0-9]/g, "")}` : "typeAll");
     const input = document.createElement("input");
     input.type = "checkbox";
     input.value = value;
@@ -751,6 +755,7 @@
   function attendanceRaidCard(record, roster, compact = false) {
     const card = document.createElement("article");
     card.className = "lootCard attendanceCard";
+    if (compact) card.classList.add("attendanceCardCompact");
     const raid = model.raids.find((item) => item.id === record.raidId);
     const titleText = raid ? raid.title : record.raidId || "Raid log";
 
@@ -787,6 +792,11 @@
     const missing = roster.filter((name) => !presentSet.has(normalizeName(name)));
     const body = document.createElement("div");
     body.className = "attendanceBody";
+    if (compact) {
+      body.append(attendanceCompactStats(record.players.length, missing.length, roster.length));
+      card.append(header, body);
+      return card;
+    }
     body.append(attendancePeopleBlock("Present", record.players, "present"));
     if (!compact) body.append(attendancePeopleBlock("Missing", missing, "missing"));
     card.append(header, body);
@@ -830,6 +840,22 @@
     });
     block.append(heading, list);
     return block;
+  }
+
+  function attendanceCompactStats(present, missing, total) {
+    const stats = document.createElement("div");
+    stats.className = "attendanceCompactStats";
+    [
+      ["Present", present, "present"],
+      ["Missing", missing, "missing"],
+      ["Roster", total, "total"]
+    ].forEach(([label, value, kind]) => {
+      const item = document.createElement("span");
+      item.className = `attendanceCompactStat ${kind}`;
+      item.textContent = `${label}: ${value}`;
+      stats.append(item);
+    });
+    return stats;
   }
 
   function attendanceRow(player) {
