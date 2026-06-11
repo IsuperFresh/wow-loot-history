@@ -22,6 +22,8 @@
   let activeView = "loot";
   let attendanceSort = "percent";
   let attendanceBucket = "all";
+  let attendanceRange = "all";
+  let attendanceLimit = 5;
   let model = {
     winners: [],
     reserves: [],
@@ -616,11 +618,12 @@
     const groups = buildLootGroups(rows);
 
     if (activeView === "attendance") {
-      const attendanceRecords = model.attendance.filter((record) => {
+      const allAttendanceRecords = model.attendance.filter((record) => {
         if (selectedPhase && record.phase !== selectedPhase) return false;
         if (selectedRaidId && record.raidId !== selectedRaidId) return false;
         return true;
       }).sort(compareLogDateDesc);
+      const attendanceRecords = selectedRaidId ? allAttendanceRecords : applyAttendanceRange(allAttendanceRecords);
       const roster = attendanceRoster(selectedPhase);
       const marks = attendanceRecords.reduce((sum, record) => sum + record.players.length, 0);
       els.raidTitle.textContent = selectedRaid
