@@ -526,7 +526,8 @@ a.itemName:hover {
   padding: 0 18px 8px;
 }
 
-.attendanceSortControl {
+.attendanceSortControl,
+.attendanceRangeControl {
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -536,14 +537,40 @@ a.itemName:hover {
   text-transform: uppercase;
 }
 
-.attendanceSortControl select {
+.attendanceSortControl select,
+.attendanceRangeControl input {
   height: 30px;
-  min-width: 132px;
   border: 1px solid var(--line-soft);
   border-radius: 4px;
   color: var(--text);
   background: #090806;
   font-weight: 750;
+}
+
+.attendanceSortControl select {
+  min-width: 132px;
+}
+
+.attendanceRangeControl input {
+  width: 58px;
+  padding: 0 6px;
+}
+
+.attendanceRangeButton {
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: 4px;
+  color: var(--muted);
+  background: #090806;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.attendanceRangeButton.active {
+  border-color: var(--gold);
+  color: var(--gold);
+  background: rgba(255, 224, 27, 0.12);
 }
 
 .attendanceBucketFilters {

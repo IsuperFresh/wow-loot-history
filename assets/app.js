@@ -649,6 +649,18 @@
     els.winnerFilter.placeholder = activeView === "attendance" ? "All players" : "All winners";
   }
 
+  function applyAttendanceRange(records) {
+    if (attendanceRange !== "last") return records;
+    attendanceLimit = clampAttendanceLimit(attendanceLimit);
+    return records.slice(0, attendanceLimit);
+  }
+
+  function clampAttendanceLimit(value) {
+    const limit = Number.parseInt(value, 10);
+    if (!Number.isFinite(limit)) return 1;
+    return Math.min(99, Math.max(1, limit));
+  }
+
   function buildLootGroups(lootRows) {
     const map = new Map();
     const get = (name) => {
@@ -861,6 +873,42 @@
     });
     sortWrap.append(sortText, sortSelect);
 
+    const rangeWrap = document.createElement("div");
+    rangeWrap.className = "attendanceRangeControl";
+    const rangeText = document.createElement("span");
+    rangeText.textContent = "Range";
+    const allRange = document.createElement("button");
+    allRange.type = "button";
+    allRange.className = "attendanceRangeButton";
+    allRange.classList.toggle("active", attendanceRange === "all");
+    allRange.textContent = "All";
+    allRange.addEventListener("click", () => {
+      attendanceRange = "all";
+      render();
+    });
+    const lastRange = document.createElement("button");
+    lastRange.type = "button";
+    lastRange.className = "attendanceRangeButton";
+    lastRange.classList.toggle("active", attendanceRange === "last");
+    lastRange.textContent = "Last";
+    lastRange.addEventListener("click", () => {
+      attendanceRange = "last";
+      render();
+    });
+    const limitInput = document.createElement("input");
+    limitInput.type = "number";
+    limitInput.min = "1";
+    limitInput.max = "99";
+    limitInput.step = "1";
+    limitInput.value = String(attendanceLimit);
+    limitInput.title = "Number of latest raids";
+    limitInput.addEventListener("input", () => {
+      attendanceRange = "last";
+      attendanceLimit = clampAttendanceLimit(limitInput.value);
+      render();
+    });
+    rangeWrap.append(rangeText, allRange, lastRange, limitInput);
+
     const buckets = document.createElement("div");
     buckets.className = "attendanceBucketFilters";
     ["all", "full", "partial", "low", "missing"].forEach((bucket) => {
@@ -876,7 +924,7 @@
       buckets.append(button);
     });
 
-    controls.append(sortWrap, buckets);
+    controls.append(sortWrap, rangeWrap, buckets);
     return controls;
   }
 
