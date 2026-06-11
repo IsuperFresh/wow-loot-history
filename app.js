@@ -6,6 +6,7 @@
     status: document.getElementById("status"),
     phaseSelect: document.getElementById("phaseSelect"),
     raidSelect: document.getElementById("raidSelect"),
+    winnerLabel: document.querySelector('label[for="winnerFilter"]'),
     winnerFilter: document.getElementById("winnerFilter"),
     typeFilter: document.getElementById("typeFilter"),
     viewTabs: document.querySelectorAll(".viewTab"),
@@ -19,6 +20,10 @@
   let rawDb = null;
   let extraCsvText = "";
   let activeView = "loot";
+  let attendanceSort = "percent";
+  let attendanceBucket = "all";
+  let attendanceRange = "all";
+  let attendanceLimit = 5;
   let model = {
     winners: [],
     reserves: [],
@@ -509,7 +514,7 @@
   function renderFilters() {
     fillSelect(els.phaseSelect, "All phases", PHASES.slice(1).map((phase) => ({ label: phase.label, value: phase.id })));
     renderRaidFilter();
-    renderTypeFilter(unique(model.winners.map((row) => displayMode(row.mode))).sort());
+    renderTypeFilter(unique(model.winners.map((row) => displayMode(row.mode))).sort((a, b) => modeOrder(a) - modeOrder(b) || a.localeCompare(b)));
   }
 
   function renderRaidFilter() {
@@ -541,11 +546,12 @@
         map.set(record.raidId, {
           id: record.raidId,
           title: record.title || record.raidId,
-          phase: record.phase || inferPhase(record.title || record.raidId)
+          phase: record.phase || inferPhase(record.title || record.raidId),
+          url: record.url || ""
         });
       }
     });
-    return Array.from(map.values());
+    return Array.from(map.values()).sort(compareLogDateDesc);
   }
 
   function fillSelect(select, label, values) {
@@ -562,10 +568,13 @@
 
   function renderTypeFilter(values) {
     const current = selectedTypeValues();
+    const orderedValues = ["SR", "MS", "OS", "DE"]
+      .filter((mode) => values.includes(mode))
+      .concat(values.filter((mode) => !["SR", "MS", "OS", "DE"].includes(mode)));
     els.typeFilter.innerHTML = "";
-    const all = typeChoice("All", "", current.length === 0);
+    const all = typeChoice("ALL", "", current.length === 0);
     els.typeFilter.append(all);
-    values.forEach((value) => {
+    orderedValues.forEach((value) => {
       els.typeFilter.append(typeChoice(value, value, current.includes(value)));
     });
   }
@@ -573,6 +582,7 @@
   function typeChoice(label, value, checked) {
     const wrap = document.createElement("label");
     wrap.className = "typeChoice";
+    wrap.classList.add(value ? `type${String(value).replace(/[^A-Za-z0-9]/g, "")}` : "typeAll");
     const input = document.createElement("input");
     input.type = "checkbox";
     input.value = value;
@@ -592,6 +602,7 @@
   }
 
   function render() {
+    syncSearchControl();
     const selectedPhase = els.phaseSelect.value;
     const selectedRaidId = els.raidSelect.value;
     const selectedTypes = selectedTypeValues();
@@ -607,11 +618,12 @@
     const groups = buildLootGroups(rows);
 
     if (activeView === "attendance") {
-      const attendanceRecords = model.attendance.filter((record) => {
+      const allAttendanceRecords = model.attendance.filter((record) => {
         if (selectedPhase && record.phase !== selectedPhase) return false;
         if (selectedRaidId && record.raidId !== selectedRaidId) return false;
         return true;
-      });
+      }).sort(compareLogDateDesc);
+      const attendanceRecords = selectedRaidId ? allAttendanceRecords : applyAttendanceRange(allAttendanceRecords);
       const roster = attendanceRoster(selectedPhase);
       const marks = attendanceRecords.reduce((sum, record) => sum + record.players.length, 0);
       els.raidTitle.textContent = selectedRaid
@@ -620,7 +632,7 @@
       els.statPlayers.textContent = roster.length;
       els.statItems.textContent = marks;
       els.statRaids.textContent = attendanceRecords.length;
-      renderAttendance(attendanceRecords, roster, selectedRaidId);
+      renderAttendance(attendanceRecords, roster, selectedRaidId, winnerQuery);
       return;
     }
 
@@ -630,6 +642,11 @@
     els.statRaids.textContent = selectedRaidId ? (rows.length ? 1 : 0) : unique(rows.map((row) => row.raidId)).length;
     renderSummary(groups);
     refreshWowheadLinks();
+  }
+
+  function syncSearchControl() {
+    if (els.winnerLabel) els.winnerLabel.textContent = activeView === "attendance" ? "Player" : "Winner";
+    els.winnerFilter.placeholder = activeView === "attendance" ? "All players" : "All winners";
   }
 
   function buildLootGroups(lootRows) {
@@ -698,7 +715,7 @@
     return unique(names).sort((a, b) => a.localeCompare(b));
   }
 
-  function renderAttendance(records, roster, selectedRaidId) {
+  function renderAttendance(records, roster, selectedRaidId, playerQuery = "") {
     els.summaryList.innerHTML = "";
     if (!records.length) {
       els.summaryList.append(empty("No attendance logs for this raid/filter yet."));
@@ -707,15 +724,15 @@
 
     const fragment = document.createDocumentFragment();
     if (selectedRaidId) {
-      records.forEach((record) => fragment.append(attendanceRaidCard(record, roster)));
+      records.forEach((record) => fragment.append(attendanceRaidCard(record, roster, false, playerQuery)));
     } else {
-      fragment.append(attendanceOverviewCard(records, roster));
-      records.forEach((record) => fragment.append(attendanceRaidCard(record, roster, true)));
+      fragment.append(attendanceOverviewCard(records, roster, playerQuery));
+      records.forEach((record) => fragment.append(attendanceRaidCard(record, roster, true, playerQuery)));
     }
     els.summaryList.append(fragment);
   }
 
-  function attendanceOverviewCard(records, roster) {
+  function attendanceOverviewCard(records, roster, playerQuery = "") {
     const card = document.createElement("article");
     card.className = "lootCard attendanceCard";
     const header = document.createElement("div");
@@ -732,27 +749,36 @@
     stats.append(count, marks);
     header.append(title, stats);
 
-    const players = attendanceRows(records, roster);
-    const visibleRows = players.sort((a, b) => b.percent - a.percent || b.attended - a.attended || a.name.localeCompare(b.name));
+    const players = attendanceRows(records, roster, playerQuery);
+    const visibleRows = sortAttendanceRows(players.filter(attendanceBucketMatch));
     const groups = document.createElement("div");
     groups.className = "attendanceGroups";
 
     const full = visibleRows.filter((row) => row.attended === row.total && row.total > 0);
-    const partial = visibleRows.filter((row) => row.attended > 0 && row.attended < row.total);
+    const partial = visibleRows.filter((row) => row.percent > 50 && row.attended < row.total);
+    const low = visibleRows.filter((row) => row.attended > 0 && row.percent <= 50);
     const missing = visibleRows.filter((row) => row.attended === 0);
-    groups.append(attendanceGroupSection("Full attendance", full));
-    groups.append(attendanceGroupSection("Partial attendance", partial));
-    if (missing.length) groups.append(attendanceGroupSection("No attendance", missing));
+    if (!visibleRows.length) {
+      groups.append(empty(playerQuery ? "No players match this search." : "No players match this attendance filter."));
+    } else if (attendanceBucket === "all") {
+      groups.append(attendanceGroupSection("Full attendance", full));
+      groups.append(attendanceGroupSection("Partial attendance", partial));
+      if (low.length) groups.append(attendanceGroupSection("Low attendance", low));
+      if (missing.length) groups.append(attendanceGroupSection("No attendance", missing));
+    } else {
+      groups.append(attendanceGroupSection(attendanceBucketLabel(attendanceBucket), visibleRows));
+    }
 
-    card.append(header, groups);
+    card.append(header, attendanceControls(), groups);
     return card;
   }
 
-  function attendanceRaidCard(record, roster, compact = false) {
-    const card = document.createElement("article");
+  function attendanceRaidCard(record, roster, compact = false, playerQuery = "") {
+    const card = document.createElement(compact ? "details" : "article");
     card.className = "lootCard attendanceCard";
+    if (compact) card.classList.add("attendanceCardCompact");
     const raid = model.raids.find((item) => item.id === record.raidId);
-    const titleText = raid ? raid.title : record.raidId || "Raid log";
+    const titleText = raid ? raid.title : record.title || record.raidId || "Raid log";
 
     const header = document.createElement("div");
     header.className = "lootCardHeader";
@@ -787,20 +813,135 @@
     const missing = roster.filter((name) => !presentSet.has(normalizeName(name)));
     const body = document.createElement("div");
     body.className = "attendanceBody";
-    body.append(attendancePeopleBlock("Present", record.players, "present"));
-    if (!compact) body.append(attendancePeopleBlock("Missing", missing, "missing"));
+    if (compact) {
+      const summary = document.createElement("summary");
+      summary.className = "attendanceCardSummary";
+      summary.append(header);
+      body.append(attendancePeopleBlock("Present", filterNames(record.players, playerQuery), "present"));
+      body.append(attendancePeopleBlock("Missing", filterNames(missing, playerQuery), "missing"));
+      card.append(summary, body);
+      return card;
+    }
+    body.append(attendancePeopleBlock("Present", filterNames(record.players, playerQuery), "present"));
+    body.append(attendancePeopleBlock("Missing", filterNames(missing, playerQuery), "missing"));
     card.append(header, body);
     return card;
   }
 
-  function attendanceRows(records, roster) {
-    return roster.map((name) => {
+  function attendanceRows(records, roster, playerQuery = "") {
+    return filterNames(roster, playerQuery).map((name) => {
       const attended = records.filter((record) => record.players.some((player) => normalizeName(player) === normalizeName(name))).length;
       const total = records.length;
       const missed = Math.max(0, total - attended);
       const percent = total ? Math.round((attended / total) * 100) : 0;
       return { name, attended, total, missed, percent };
     });
+  }
+
+  function attendanceControls() {
+    const controls = document.createElement("div");
+    controls.className = "attendanceControls";
+
+    const sortWrap = document.createElement("label");
+    sortWrap.className = "attendanceSortControl";
+    const sortText = document.createElement("span");
+    sortText.textContent = "Sort";
+    const sortSelect = document.createElement("select");
+    [
+      ["percent", "By %"],
+      ["attended", "By attended"],
+      ["name", "By name"]
+    ].forEach(([value, label]) => {
+      sortSelect.append(new Option(label, value));
+    });
+    sortSelect.value = attendanceSort;
+    sortSelect.addEventListener("input", () => {
+      attendanceSort = sortSelect.value;
+      render();
+    });
+    sortWrap.append(sortText, sortSelect);
+
+    const buckets = document.createElement("div");
+    buckets.className = "attendanceBucketFilters";
+    ["all", "full", "partial", "low", "missing"].forEach((bucket) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "attendanceBucket";
+      button.classList.toggle("active", attendanceBucket === bucket);
+      button.textContent = attendanceBucketLabel(bucket);
+      button.addEventListener("click", () => {
+        attendanceBucket = bucket;
+        render();
+      });
+      buckets.append(button);
+    });
+
+    controls.append(sortWrap, buckets);
+    return controls;
+  }
+
+  function filterNames(names, query) {
+    const value = normalizeName(query);
+    if (!value) return names;
+    return names.filter((name) => normalizeName(name).includes(value));
+  }
+
+  function sortAttendanceRows(rows) {
+    return rows.sort((a, b) => {
+      if (attendanceSort === "name") return a.name.localeCompare(b.name);
+      if (attendanceSort === "attended") return b.attended - a.attended || b.percent - a.percent || a.name.localeCompare(b.name);
+      return b.percent - a.percent || b.attended - a.attended || a.name.localeCompare(b.name);
+    });
+  }
+
+  function attendanceBucketMatch(row) {
+    if (attendanceBucket === "full") return row.percent === 100;
+    if (attendanceBucket === "partial") return row.percent > 50 && row.percent < 100;
+    if (attendanceBucket === "low") return row.percent > 0 && row.percent <= 50;
+    if (attendanceBucket === "missing") return row.percent === 0;
+    return true;
+  }
+
+  function attendanceBucketLabel(bucket) {
+    return {
+      all: "All",
+      full: "Full",
+      partial: "Partial",
+      low: "Low",
+      missing: "Missing"
+    }[bucket] || "All";
+  }
+
+  function compareLogDateDesc(a, b) {
+    const diff = logTimestamp(b) - logTimestamp(a);
+    if (diff) return diff;
+    return logLabel(b).localeCompare(logLabel(a));
+  }
+
+  function logTimestamp(record) {
+    const urlDate = String(record.url || "").match(/\/reports\/(\d{2})-(\d{2})-(\d{2})--(\d{2})-(\d{2})/i);
+    if (urlDate) {
+      const [, yy, month, day, hour, minute] = urlDate;
+      return Date.UTC(2000 + Number(yy), Number(month) - 1, Number(day), Number(hour), Number(minute));
+    }
+
+    const labelDate = logLabel(record).match(/(\d{1,2})\.(\d{1,2})\.(\d{4})/);
+    if (labelDate) {
+      const [, day, month, year] = labelDate;
+      return Date.UTC(Number(year), Number(month) - 1, Number(day));
+    }
+
+    const isoDate = logLabel(record).match(/(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?/);
+    if (isoDate) {
+      const [, year, month, day, hour = "0", minute = "0"] = isoDate;
+      return Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute));
+    }
+
+    return 0;
+  }
+
+  function logLabel(record) {
+    return String(record.title || record.raidId || record.id || record.finalizedAt || "");
   }
 
   function attendanceGroupSection(title, rows) {
@@ -825,6 +966,8 @@
     names.forEach((name) => {
       const item = document.createElement("span");
       item.className = `attendancePerson ${kind}`;
+      const token = playerClassToken(name);
+      if (token) item.classList.add(`class${token}`);
       item.textContent = name;
       list.append(item);
     });
@@ -832,11 +975,30 @@
     return block;
   }
 
+  function attendanceCompactStats(present, missing, total) {
+    const stats = document.createElement("div");
+    stats.className = "attendanceCompactStats";
+    [
+      ["Present", present, "present"],
+      ["Missing", missing, "missing"],
+      ["Roster", total, "total"]
+    ].forEach(([label, value, kind]) => {
+      const item = document.createElement("span");
+      item.className = `attendanceCompactStat ${kind}`;
+      item.textContent = `${label}: ${value}`;
+      stats.append(item);
+    });
+    return stats;
+  }
+
   function attendanceRow(player) {
     const row = document.createElement("div");
     row.className = "attendanceRow";
     row.classList.add(player.percent === 100 ? "full" : player.percent === 0 ? "none" : "partial");
     const nameCell = document.createElement("span");
+    nameCell.className = "attendanceName";
+    const token = playerClassToken(player.name);
+    if (token) nameCell.classList.add(`class${token}`);
     nameCell.textContent = player.name;
     const countCell = document.createElement("strong");
     countCell.textContent = `${player.attended}/${player.total}`;
@@ -982,6 +1144,11 @@
     return String(className || "")
       .toLowerCase()
       .replace(/[^a-z]/g, "");
+  }
+
+  function playerClassToken(name) {
+    const info = model.playerInfo?.get(normalizeName(name));
+    return classToken(info?.className || "");
   }
 
   function armoryUrl(name) {
