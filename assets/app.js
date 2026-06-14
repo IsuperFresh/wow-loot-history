@@ -11,8 +11,11 @@
     typeFilter: document.getElementById("typeFilter"),
     viewTabs: document.querySelectorAll(".viewTab"),
     raidTitle: document.getElementById("raidTitle"),
+    statPlayersLabel: document.getElementById("statPlayers")?.previousElementSibling,
     statPlayers: document.getElementById("statPlayers"),
+    statItemsLabel: document.getElementById("statItems")?.previousElementSibling,
     statItems: document.getElementById("statItems"),
+    statRaidsLabel: document.getElementById("statRaids")?.previousElementSibling,
     statRaids: document.getElementById("statRaids"),
     summaryList: document.getElementById("summaryList")
   };
@@ -24,6 +27,7 @@
   let attendanceBucket = "all";
   let attendanceRange = "all";
   let attendanceLimit = 5;
+  let performanceSort = "dps";
   let model = {
     winners: [],
     reserves: [],
@@ -519,7 +523,7 @@
 
   function renderRaidFilter() {
     const selectedPhase = els.phaseSelect.value;
-    const raidOptions = activeView === "attendance" ? attendanceRaidOptions() : lootRaidOptions();
+    const raidOptions = isLogView() ? attendanceRaidOptions() : lootRaidOptions();
     const filteredOptions = raidOptions.filter((raid) => !selectedPhase || raid.phase === selectedPhase);
     fillSelect(els.raidSelect, "All raids", filteredOptions.map((raid) => ({ label: raid.title, value: raid.id })));
   }
@@ -607,7 +611,7 @@
     const selectedRaidId = els.raidSelect.value;
     const selectedTypes = selectedTypeValues();
     const winnerQuery = els.winnerFilter.value.trim().toLowerCase();
-    const selectedRaid = (activeView === "attendance" ? attendanceRaidOptions() : lootRaidOptions()).find((raid) => raid.id === selectedRaidId);
+    const selectedRaid = (isLogView() ? attendanceRaidOptions() : lootRaidOptions()).find((raid) => raid.id === selectedRaidId);
     const rows = model.winners.filter((row) => {
       if (selectedPhase && row.phase !== selectedPhase) return false;
       if (selectedRaidId && row.raidId !== selectedRaidId) return false;
@@ -626,6 +630,7 @@
       const attendanceRecords = selectedRaidId ? allAttendanceRecords : applyAttendanceRange(allAttendanceRecords);
       const roster = attendanceRoster(selectedPhase);
       const marks = attendanceRecords.reduce((sum, record) => sum + record.players.length, 0);
+      setSummaryLabels("Players", "Marks", "Raids");
       els.raidTitle.textContent = selectedRaid
         ? `${selectedRaid.title} attendance`
         : selectedPhase ? `${phaseLabel(selectedPhase)} attendance` : "Attendance";
@@ -636,6 +641,28 @@
       return;
     }
 
+    if (activeView === "performance") {
+      const allPerformanceRecords = model.attendance.filter((record) => {
+        if (selectedPhase && record.phase !== selectedPhase) return false;
+        if (selectedRaidId && record.raidId !== selectedRaidId) return false;
+        return true;
+      }).sort(compareLogDateDesc);
+      const performanceRecords = selectedRaidId ? allPerformanceRecords : applyAttendanceRange(allPerformanceRecords);
+      const roster = attendanceRoster(selectedPhase);
+      const players = performanceRows(performanceRecords, roster, winnerQuery);
+      const metricSamples = players.reduce((sum, row) => sum + row.samples, 0);
+      setSummaryLabels("Players", "Samples", "Raids");
+      els.raidTitle.textContent = selectedRaid
+        ? `${selectedRaid.title} performance`
+        : selectedPhase ? `${phaseLabel(selectedPhase)} performance` : "Performance";
+      els.statPlayers.textContent = players.length;
+      els.statItems.textContent = metricSamples;
+      els.statRaids.textContent = performanceRecords.length;
+      renderPerformance(performanceRecords, players, selectedRaidId);
+      return;
+    }
+
+    setSummaryLabels("Players", "Items", "Raids saved");
     els.raidTitle.textContent = selectedRaid ? selectedRaid.title : selectedPhase ? phaseLabel(selectedPhase) : selectedRaidId || "All raids";
     els.statPlayers.textContent = groups.length;
     els.statItems.textContent = rows.length;
@@ -645,8 +672,18 @@
   }
 
   function syncSearchControl() {
-    if (els.winnerLabel) els.winnerLabel.textContent = activeView === "attendance" ? "Player" : "Winner";
-    els.winnerFilter.placeholder = activeView === "attendance" ? "All players" : "All winners";
+    if (els.winnerLabel) els.winnerLabel.textContent = isLogView() ? "Player" : "Winner";
+    els.winnerFilter.placeholder = isLogView() ? "All players" : "All winners";
+  }
+
+  function isLogView() {
+    return activeView === "attendance" || activeView === "performance";
+  }
+
+  function setSummaryLabels(players, items, raids) {
+    if (els.statPlayersLabel) els.statPlayersLabel.textContent = players;
+    if (els.statItemsLabel) els.statItemsLabel.textContent = items;
+    if (els.statRaidsLabel) els.statRaidsLabel.textContent = raids;
   }
 
   function applyAttendanceRange(records) {
@@ -708,10 +745,30 @@
           fetchedAt: record.fetchedAt || "",
           players: unique(ensureArray(record.players).map((name) => String(name || "").trim()).filter(Boolean)).sort((a, b) => a.localeCompare(b)),
           skipped: unique(ensureArray(record.skipped).map((name) => String(name || "").trim()).filter(Boolean)).sort((a, b) => a.localeCompare(b)),
+          performance: normalizePerformance(record.performance),
           error: record.error || ""
         };
       })
       .filter((record) => record.raidId || record.url);
+  }
+
+  function normalizePerformance(rows) {
+    return ensureArray(rows)
+      .filter((row) => row && typeof row === "object")
+      .map((row) => ({
+        name: String(row.name || row.player || "").trim(),
+        dps: numberValue(row.dps),
+        hps: numberValue(row.hps),
+        damageDone: numberValue(row.damageDone),
+        healingDone: numberValue(row.healingDone),
+        damageTaken: numberValue(row.damageTaken)
+      }))
+      .filter((row) => row.name);
+  }
+
+  function numberValue(value) {
+    const number = Number(value);
+    return Number.isFinite(number) ? number : 0;
   }
 
   function attendanceRoster(selectedPhase = "") {
@@ -723,6 +780,7 @@
     model.attendance.forEach((record) => {
       if (selectedPhase && record.phase !== selectedPhase) return;
       record.players.forEach((name) => names.push(name));
+      record.performance.forEach((row) => names.push(row.name));
     });
     return unique(names).sort((a, b) => a.localeCompare(b));
   }
@@ -742,6 +800,127 @@
       records.forEach((record) => fragment.append(attendanceRaidCard(record, roster, true, playerQuery)));
     }
     els.summaryList.append(fragment);
+  }
+
+  function renderPerformance(records, players, selectedRaidId) {
+    els.summaryList.innerHTML = "";
+    if (!records.length) {
+      els.summaryList.append(empty("No performance logs for this raid/filter yet."));
+      return;
+    }
+
+    if (!records.some((record) => record.performance.length)) {
+      els.summaryList.append(empty("No DPS/HPS metrics saved yet. Run update.ps1 -RefreshAttendance when uwu logs are available."));
+      return;
+    }
+
+    const card = document.createElement("article");
+    card.className = "lootCard performanceCard";
+    const header = document.createElement("div");
+    header.className = "lootCardHeader";
+    const title = document.createElement("h3");
+    title.textContent = selectedRaidId ? "Raid performance" : "All raids performance";
+    const stats = document.createElement("div");
+    stats.className = "lootCardStats";
+    const count = document.createElement("strong");
+    count.className = "countBadge";
+    count.textContent = `${records.length} log${records.length === 1 ? "" : "s"}`;
+    const samples = document.createElement("p");
+    samples.textContent = `${players.reduce((sum, row) => sum + row.samples, 0)} player samples`;
+    stats.append(count, samples);
+    header.append(title, stats);
+
+    const table = document.createElement("div");
+    table.className = "performanceTable";
+    table.append(performanceHeaderRow());
+    const visiblePlayers = sortPerformanceRows(players);
+    if (!visiblePlayers.length) {
+      table.append(empty("No players match this search."));
+    } else {
+      visiblePlayers.forEach((player) => table.append(performanceRow(player)));
+    }
+
+    card.append(header, performanceControls(), table);
+    els.summaryList.append(card);
+  }
+
+  function performanceRows(records, roster, playerQuery = "") {
+    const map = new Map();
+    const query = normalizeName(playerQuery);
+    const get = (name) => {
+      const key = normalizeName(name);
+      if (!map.has(key)) {
+        map.set(key, {
+          name,
+          attended: 0,
+          total: records.length,
+          samples: 0,
+          dpsTotal: 0,
+          dpsSamples: 0,
+          hpsTotal: 0,
+          hpsSamples: 0,
+          damageDone: 0,
+          healingDone: 0,
+          damageTaken: 0,
+          damageTakenSamples: 0,
+          tankMarks: 0
+        });
+      }
+      return map.get(key);
+    };
+
+    filterNames(roster, playerQuery).forEach((name) => get(name));
+    records.forEach((record) => {
+      const present = new Set(record.players.map(normalizeName));
+      record.players.forEach((name) => {
+        if (!query || normalizeName(name).includes(query)) get(name).attended += 1;
+      });
+
+      const tanks = tankNamesForRecord(record);
+      record.performance.forEach((metric) => {
+        if (query && !normalizeName(metric.name).includes(query)) return;
+        const row = get(metric.name);
+        if (!present.has(normalizeName(metric.name))) row.attended += 1;
+        const hasMetric = metric.dps || metric.hps || metric.damageDone || metric.healingDone || metric.damageTaken;
+        if (hasMetric) row.samples += 1;
+        if (metric.dps > 0) {
+          row.dpsTotal += metric.dps;
+          row.dpsSamples += 1;
+        }
+        if (metric.hps > 0) {
+          row.hpsTotal += metric.hps;
+          row.hpsSamples += 1;
+        }
+        row.damageDone += metric.damageDone;
+        row.healingDone += metric.healingDone;
+        row.damageTaken += metric.damageTaken;
+        if (metric.damageTaken > 0) row.damageTakenSamples += 1;
+        if (tanks.has(normalizeName(metric.name))) row.tankMarks += 1;
+      });
+    });
+
+    return Array.from(map.values()).map((row) => {
+      const percent = row.total ? Math.round((row.attended / row.total) * 100) : 0;
+      return {
+        ...row,
+        percent,
+        avgDps: row.dpsSamples ? row.dpsTotal / row.dpsSamples : 0,
+        avgHps: row.hpsSamples ? row.hpsTotal / row.hpsSamples : 0,
+        avgDamageTaken: row.damageTakenSamples ? row.damageTaken / row.damageTakenSamples : 0
+      };
+    }).filter((row) => row.attended || row.samples);
+  }
+
+  function tankNamesForRecord(record) {
+    const ranked = record.performance
+      .filter((row) => row.damageTaken > 0)
+      .sort((a, b) => b.damageTaken - a.damageTaken);
+    if (!ranked.length) return new Set();
+    const top = ranked[0].damageTaken;
+    return new Set(ranked
+      .slice(0, 3)
+      .filter((row) => row.damageTaken >= top * 0.55)
+      .map((row) => normalizeName(row.name)));
   }
 
   function attendanceOverviewCard(records, roster, playerQuery = "") {
@@ -926,6 +1105,126 @@
 
     controls.append(sortWrap, rangeWrap, buckets);
     return controls;
+  }
+
+  function performanceControls() {
+    const controls = document.createElement("div");
+    controls.className = "attendanceControls performanceControls";
+
+    const sortWrap = document.createElement("label");
+    sortWrap.className = "attendanceSortControl";
+    const sortText = document.createElement("span");
+    sortText.textContent = "Sort";
+    const sortSelect = document.createElement("select");
+    [
+      ["dps", "By DPS"],
+      ["hps", "By HPS"],
+      ["taken", "By taken"],
+      ["attendance", "By attendance"],
+      ["name", "By name"]
+    ].forEach(([value, label]) => {
+      sortSelect.append(new Option(label, value));
+    });
+    sortSelect.value = performanceSort;
+    sortSelect.addEventListener("input", () => {
+      performanceSort = sortSelect.value;
+      render();
+    });
+    sortWrap.append(sortText, sortSelect);
+
+    controls.append(sortWrap, rangeControls());
+    return controls;
+  }
+
+  function rangeControls() {
+    const rangeWrap = document.createElement("div");
+    rangeWrap.className = "attendanceRangeControl";
+    const rangeText = document.createElement("span");
+    rangeText.textContent = "Range";
+    const allRange = document.createElement("button");
+    allRange.type = "button";
+    allRange.className = "attendanceRangeButton";
+    allRange.classList.toggle("active", attendanceRange === "all");
+    allRange.textContent = "All";
+    allRange.addEventListener("click", () => {
+      attendanceRange = "all";
+      render();
+    });
+    const lastRange = document.createElement("button");
+    lastRange.type = "button";
+    lastRange.className = "attendanceRangeButton";
+    lastRange.classList.toggle("active", attendanceRange === "last");
+    lastRange.textContent = "Last";
+    lastRange.addEventListener("click", () => {
+      attendanceRange = "last";
+      render();
+    });
+    const limitInput = document.createElement("input");
+    limitInput.type = "number";
+    limitInput.min = "1";
+    limitInput.max = "99";
+    limitInput.step = "1";
+    limitInput.value = String(attendanceLimit);
+    limitInput.title = "Number of latest raids";
+    limitInput.addEventListener("input", () => {
+      attendanceRange = "last";
+      attendanceLimit = clampAttendanceLimit(limitInput.value);
+      render();
+    });
+    rangeWrap.append(rangeText, allRange, lastRange, limitInput);
+    return rangeWrap;
+  }
+
+  function performanceHeaderRow() {
+    const row = document.createElement("div");
+    row.className = "performanceRow performanceHeader";
+    ["Player", "Att", "Avg DPS", "Avg HPS", "Avg taken", "Tank", "Samples"].forEach((label) => {
+      const cell = document.createElement("span");
+      cell.textContent = label;
+      row.append(cell);
+    });
+    return row;
+  }
+
+  function performanceRow(player) {
+    const row = document.createElement("div");
+    row.className = "performanceRow";
+    const nameCell = document.createElement("span");
+    nameCell.className = "attendanceName";
+    const token = playerClassToken(player.name);
+    if (token) nameCell.classList.add(`class${token}`);
+    nameCell.textContent = player.name;
+
+    const attendance = document.createElement("strong");
+    attendance.textContent = `${player.attended}/${player.total} (${player.percent}%)`;
+    const dps = document.createElement("span");
+    dps.textContent = player.avgDps ? formatNumber(player.avgDps) : "-";
+    const hps = document.createElement("span");
+    hps.textContent = player.avgHps ? formatNumber(player.avgHps) : "-";
+    const taken = document.createElement("span");
+    taken.textContent = player.avgDamageTaken ? formatNumber(player.avgDamageTaken) : "-";
+    const tank = document.createElement("span");
+    tank.className = player.tankMarks ? "tankBadge active" : "tankBadge";
+    tank.textContent = player.tankMarks ? `Tank ${player.tankMarks}` : "-";
+    const samples = document.createElement("span");
+    samples.textContent = String(player.samples);
+
+    row.append(nameCell, attendance, dps, hps, taken, tank, samples);
+    return row;
+  }
+
+  function sortPerformanceRows(rows) {
+    return rows.sort((a, b) => {
+      if (performanceSort === "name") return a.name.localeCompare(b.name);
+      if (performanceSort === "attendance") return b.percent - a.percent || b.attended - a.attended || a.name.localeCompare(b.name);
+      if (performanceSort === "hps") return b.avgHps - a.avgHps || b.avgDps - a.avgDps || a.name.localeCompare(b.name);
+      if (performanceSort === "taken") return b.avgDamageTaken - a.avgDamageTaken || b.tankMarks - a.tankMarks || a.name.localeCompare(b.name);
+      return b.avgDps - a.avgDps || b.avgHps - a.avgHps || a.name.localeCompare(b.name);
+    });
+  }
+
+  function formatNumber(value) {
+    return Math.round(value).toLocaleString("en-US");
   }
 
   function filterNames(names, query) {

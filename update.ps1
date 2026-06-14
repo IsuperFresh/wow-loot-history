@@ -30,14 +30,46 @@ function ConvertFrom-HtmlText {
 
 function ConvertTo-Number {
   param([string]$Value)
-  $clean = ($Value -replace '[^\d\.,-]', '') -replace ' ', ''
+  $raw = ([string]$Value).Trim().ToLowerInvariant()
+  $multiplier = 1.0
+  if ($raw -match '([kmb])\s*$') {
+    if ($Matches[1] -eq "k") { $multiplier = 1000.0 }
+    elseif ($Matches[1] -eq "m") { $multiplier = 1000000.0 }
+    elseif ($Matches[1] -eq "b") { $multiplier = 1000000000.0 }
+  }
+  $clean = ($raw -replace '[^\d\.,-]', '') -replace ' ', ''
   if ([string]::IsNullOrWhiteSpace($clean)) { return 0 }
-  $clean = $clean -replace ',', '.'
+  if ($clean.Contains(".") -and $clean.Contains(",")) {
+    $clean = $clean -replace ',', ''
+  } elseif ($clean -match '^-?\d{1,3}(,\d{3})+(\.\d+)?$') {
+    $clean = $clean -replace ',', ''
+  } else {
+    $clean = $clean -replace ',', '.'
+  }
   $number = 0.0
   if ([double]::TryParse($clean, [Globalization.NumberStyles]::Any, [Globalization.CultureInfo]::InvariantCulture, [ref]$number)) {
-    return $number
+    return $number * $multiplier
   }
   return 0
+}
+
+function Get-UwuColumnIndex {
+  param(
+    [string[]]$Headers,
+    [string[]]$Needles,
+    [int]$Fallback
+  )
+
+  for ($index = 0; $index -lt $Headers.Count; $index++) {
+    $header = ([string]$Headers[$index]).Trim().ToLowerInvariant()
+    foreach ($needle in $Needles) {
+      if ($header -eq $needle -or $header -match [regex]::Escape($needle)) {
+        return $index
+      }
+    }
+  }
+
+  return $Fallback
 }
 
 function ConvertTo-EnglishRequestError {
@@ -131,6 +163,7 @@ function Get-UwuAttendance {
     fetchedAt = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
     players = @()
     skipped = @()
+    performance = @()
     minDamageOrHealing = $AttendanceMinDamageOrHealing
     error = ""
   }
@@ -140,6 +173,7 @@ function Get-UwuAttendance {
     $response = Invoke-UwuRequest -Url $Url
     $html = [string]$response.Content
     $seen = @{}
+    $headers = @()
     foreach ($row in [regex]::Matches($html, '<tr[\s\S]*?</tr>', 'IgnoreCase')) {
       $cells = @()
       foreach ($cell in [regex]::Matches($row.Value, '<t[dh][^>]*>(?<cell>[\s\S]*?)</t[dh]>', 'IgnoreCase')) {
@@ -147,10 +181,30 @@ function Get-UwuAttendance {
       }
       if ($cells.Count -lt 4) { continue }
       $name = $cells[0]
-      if (-not $name -or $name -eq "Name" -or $name -eq "Total") { continue }
+      if (-not $name -or $name -eq "Total") { continue }
+      if ($name -eq "Name") {
+        $headers = $cells
+        continue
+      }
 
-      $damageDone = if ($cells.Count -gt 7) { ConvertTo-Number $cells[7] } else { 0 }
-      $healingDone = if ($cells.Count -gt 10) { ConvertTo-Number $cells[10] } else { 0 }
+      $dpsIndex = Get-UwuColumnIndex -Headers $headers -Needles @("dps", "damage per second") -Fallback 6
+      $damageDoneIndex = Get-UwuColumnIndex -Headers $headers -Needles @("damage done", "dmg done", "total damage") -Fallback 7
+      $hpsIndex = Get-UwuColumnIndex -Headers $headers -Needles @("hps", "healing per second") -Fallback 9
+      $healingDoneIndex = Get-UwuColumnIndex -Headers $headers -Needles @("healing done", "heal done", "total healing") -Fallback 10
+      $damageTakenIndex = Get-UwuColumnIndex -Headers $headers -Needles @("damage taken", "dmg taken", "taken") -Fallback 4
+      $dps = if ($cells.Count -gt $dpsIndex) { ConvertTo-Number $cells[$dpsIndex] } else { 0 }
+      $damageDone = if ($cells.Count -gt $damageDoneIndex) { ConvertTo-Number $cells[$damageDoneIndex] } else { 0 }
+      $hps = if ($cells.Count -gt $hpsIndex) { ConvertTo-Number $cells[$hpsIndex] } else { 0 }
+      $healingDone = if ($cells.Count -gt $healingDoneIndex) { ConvertTo-Number $cells[$healingDoneIndex] } else { 0 }
+      $damageTaken = if ($cells.Count -gt $damageTakenIndex) { ConvertTo-Number $cells[$damageTakenIndex] } else { 0 }
+      $record.performance += [ordered]@{
+        name = $name
+        dps = $dps
+        hps = $hps
+        damageDone = $damageDone
+        healingDone = $healingDone
+        damageTaken = $damageTaken
+      }
       if ($damageDone -ge $AttendanceMinDamageOrHealing -or $healingDone -ge $AttendanceMinDamageOrHealing) {
         if (-not $seen.ContainsKey($name)) {
           $record.players += $name
@@ -188,7 +242,7 @@ $script:attendanceCachePath = Join-Path $PSScriptRoot "attendance-cache.json"
 $script:attendanceCache = @{}
 $script:attendanceCacheChanged = $false
 $script:lastAttendanceFromCache = $false
-if (-not $RefreshAttendance -and (Test-Path -LiteralPath $script:attendanceCachePath)) {
+if (Test-Path -LiteralPath $script:attendanceCachePath) {
   $cacheText = [string](Get-Content -LiteralPath $script:attendanceCachePath -Raw)
   if (-not [string]::IsNullOrWhiteSpace($cacheText)) {
     $cacheObject = $cacheText | ConvertFrom-Json
@@ -215,6 +269,7 @@ function New-AttendanceRecordFromCache {
 
   $players = @($Cached.players)
   $skipped = @($Cached.skipped)
+  $performance = if ($null -ne $Cached.performance) { @($Cached.performance) } else { @() }
   return [ordered]@{
     raidId = $RaidId
     title = $Title
@@ -224,6 +279,7 @@ function New-AttendanceRecordFromCache {
     fetchedAt = [string]$Cached.fetchedAt
     players = $players
     skipped = $skipped
+    performance = $performance
     minDamageOrHealing = $AttendanceMinDamageOrHealing
     error = ""
     playerCount = $players.Count
@@ -241,8 +297,8 @@ function Get-CachedOrFetchAttendance {
   )
 
   $cacheKey = Get-AttendanceCacheKey $Url
-  if (-not $RefreshAttendance -and $script:attendanceCache.ContainsKey($cacheKey)) {
-    $cached = $script:attendanceCache[$cacheKey]
+  $cached = if ($script:attendanceCache.ContainsKey($cacheKey)) { $script:attendanceCache[$cacheKey] } else { $null }
+  if (-not $RefreshAttendance -and $cached) {
     if (-not $cached.error -and @($cached.players).Count -gt 0) {
       Write-Host "Using cached $Message`: $Url"
       $script:lastAttendanceFromCache = $true
@@ -259,11 +315,16 @@ function Get-CachedOrFetchAttendance {
       fetchedAt = $record.fetchedAt
       players = @($record.players)
       skipped = @($record.skipped)
+      performance = @($record.performance)
       minDamageOrHealing = $AttendanceMinDamageOrHealing
       playerCount = @($record.players).Count
       error = ""
     }
     $script:attendanceCacheChanged = $true
+  } elseif ($cached -and -not $cached.error -and @($cached.players).Count -gt 0) {
+    Write-Host "Keeping cached $Message after fetch error: $Url"
+    $script:lastAttendanceFromCache = $true
+    return New-AttendanceRecordFromCache -Cached $cached -RaidId $RaidId -Url $Url -Title $Title -Phase $Phase -Source $Source
   }
   return $record
 }

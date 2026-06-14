@@ -687,6 +687,59 @@ a.itemName:hover {
   gap: 6px;
 }
 
+.performanceTable {
+  display: grid;
+  gap: 5px;
+  padding: 6px 18px 18px;
+}
+
+.performanceRow {
+  display: grid;
+  grid-template-columns: minmax(150px, 1.15fr) 100px repeat(3, minmax(84px, 0.75fr)) 86px 72px;
+  gap: 8px;
+  align-items: center;
+  min-height: 32px;
+  padding: 5px 8px;
+  border: 1px solid rgba(95, 70, 31, 0.22);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.18);
+  font-size: 0.9rem;
+}
+
+.performanceHeader {
+  color: var(--muted);
+  background: rgba(255, 224, 27, 0.07);
+  font-size: 0.74rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.performanceRow span,
+.performanceRow strong {
+  min-width: 0;
+  text-align: right;
+}
+
+.performanceRow span:first-child {
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.performanceRow strong {
+  color: var(--gold);
+}
+
+.tankBadge {
+  color: var(--muted);
+  font-weight: 850;
+}
+
+.tankBadge.active {
+  color: var(--blue);
+}
+
 .attendanceRow {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 48px 44px;
@@ -767,52 +820,52 @@ a.itemName:hover {
   white-space: nowrap;
 }
 
-.attendanceRow .attendanceName.classdeathknight,
+.attendanceName.classdeathknight,
 .attendancePerson.classdeathknight {
   color: #c41e3a;
 }
 
-.attendanceRow .attendanceName.classpaladin,
+.attendanceName.classpaladin,
 .attendancePerson.classpaladin {
   color: #f48cba;
 }
 
-.attendanceRow .attendanceName.classshaman,
+.attendanceName.classshaman,
 .attendancePerson.classshaman {
   color: #0070dd;
 }
 
-.attendanceRow .attendanceName.classdruid,
+.attendanceName.classdruid,
 .attendancePerson.classdruid {
   color: #ff7c0a;
 }
 
-.attendanceRow .attendanceName.classhunter,
+.attendanceName.classhunter,
 .attendancePerson.classhunter {
   color: #aad372;
 }
 
-.attendanceRow .attendanceName.classmage,
+.attendanceName.classmage,
 .attendancePerson.classmage {
   color: #3fc7eb;
 }
 
-.attendanceRow .attendanceName.classpriest,
+.attendanceName.classpriest,
 .attendancePerson.classpriest {
   color: #ffffff;
 }
 
-.attendanceRow .attendanceName.classrogue,
+.attendanceName.classrogue,
 .attendancePerson.classrogue {
   color: #fff468;
 }
 
-.attendanceRow .attendanceName.classwarlock,
+.attendanceName.classwarlock,
 .attendancePerson.classwarlock {
   color: #8788ee;
 }
 
-.attendanceRow .attendanceName.classwarrior,
+.attendanceName.classwarrior,
 .attendancePerson.classwarrior {
   color: #c69b6d;
 }
@@ -868,6 +921,15 @@ a.itemName:hover {
   .lootDate {
     grid-column: 1 / -1;
     text-align: left;
+  }
+
+  .performanceTable {
+    overflow-x: auto;
+  }
+
+  .performanceRow {
+    grid-template-columns: 150px 96px 84px 84px 92px 82px 70px;
+    min-width: 680px;
   }
 }
 
