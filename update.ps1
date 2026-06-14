@@ -6,7 +6,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $AttendanceMinDamageOrHealing = 100000
-$AttendanceCacheVersion = "min-activity-100000-v4"
+$AttendanceCacheVersion = "min-activity-100000-v5"
 
 if (-not (Test-Path -LiteralPath $Source)) {
   throw "SoftResRoller.lua was not found: $Source"
@@ -77,6 +77,52 @@ function Get-HtmlClassList {
   $match = [regex]::Match($Attributes, 'class\s*=\s*["''](?<class>[^"'']+)["'']', 'IgnoreCase')
   if (-not $match.Success) { return @() }
   return @($match.Groups["class"].Value -split '\s+' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+}
+
+function Get-HtmlAttribute {
+  param(
+    [string]$Attributes,
+    [string]$Name
+  )
+
+  $pattern = ('{0}\s*=\s*["''](?<value>[^"'']*)["'']' -f [regex]::Escape($Name))
+  $match = [regex]::Match($Attributes, $pattern, 'IgnoreCase')
+  if (-not $match.Success) { return "" }
+  return [System.Net.WebUtility]::HtmlDecode($match.Groups["value"].Value).Trim()
+}
+
+function Get-UwuClassSpecFromTitle {
+  param([string]$Title)
+
+  $text = ([string]$Title).Trim()
+  $classes = @(
+    @{ Pattern = '\bDeath\s*Knight\b|\bDeathknight\b'; Name = 'Deathknight' },
+    @{ Pattern = '\bPaladin\b'; Name = 'Paladin' },
+    @{ Pattern = '\bShaman\b'; Name = 'Shaman' },
+    @{ Pattern = '\bDruid\b'; Name = 'Druid' },
+    @{ Pattern = '\bHunter\b'; Name = 'Hunter' },
+    @{ Pattern = '\bMage\b'; Name = 'Mage' },
+    @{ Pattern = '\bPriest\b'; Name = 'Priest' },
+    @{ Pattern = '\bRogue\b'; Name = 'Rogue' },
+    @{ Pattern = '\bWarlock\b'; Name = 'Warlock' },
+    @{ Pattern = '\bWarrior\b'; Name = 'Warrior' }
+  )
+
+  foreach ($class in $classes) {
+    $match = [regex]::Match($text, $class.Pattern, 'IgnoreCase')
+    if ($match.Success) {
+      $spec = ($text.Substring(0, $match.Index) -replace '\s+', ' ').Trim()
+      return [pscustomobject]@{
+        className = $class.Name
+        spec = $spec
+      }
+    }
+  }
+
+  return [pscustomobject]@{
+    className = ""
+    spec = ""
+  }
 }
 
 function Get-UwuCellIndex {
@@ -186,14 +232,18 @@ function Read-UwuPerformanceFromHtml {
   foreach ($row in [regex]::Matches($Html, '<tr[\s\S]*?</tr>', 'IgnoreCase')) {
     $cells = @()
     foreach ($cell in [regex]::Matches($row.Value, '<t[dh](?<attrs>[^>]*)>(?<cell>[\s\S]*?)</t[dh]>', 'IgnoreCase')) {
+      $title = Get-HtmlAttribute $cell.Groups["attrs"].Value "title"
+      if (-not $title) { $title = Get-HtmlAttribute $cell.Groups["cell"].Value "title" }
       $cells += [pscustomobject]@{
         text = ConvertFrom-HtmlText $cell.Groups["cell"].Value
         classes = @(Get-HtmlClassList $cell.Groups["attrs"].Value)
+        title = $title
       }
     }
     if ($cells.Count -lt 4) { continue }
     $name = [string]$cells[0].text
     if (-not $name -or $name -eq "Total" -or $name -eq "Name") { continue }
+    $classSpec = Get-UwuClassSpecFromTitle $cells[0].title
 
     $dpsIndex = Get-UwuCellIndex -Cells $cells -RequiredClasses @("damage", "per-sec-cell") -Fallback 8
     $damageDoneIndex = Get-UwuCellIndex -Cells $cells -RequiredClasses @("damage", "total-cell") -Fallback 7
@@ -212,6 +262,8 @@ function Read-UwuPerformanceFromHtml {
       damageDone = $damageDone
       healingDone = $healingDone
       damageTaken = $damageTaken
+      className = $classSpec.className
+      spec = $classSpec.spec
     }
     if ($damageDone -ge $AttendanceMinDamageOrHealing -or $healingDone -ge $AttendanceMinDamageOrHealing -or $damageTaken -ge $AttendanceMinDamageOrHealing) {
       if (-not $seen.ContainsKey($name)) {
@@ -279,33 +331,6 @@ function Get-UwuAttendance {
     $record.skipped = @($summary.skipped)
     $record.performance = @($summary.performance)
 
-    foreach ($bossLink in Get-UwuBossLinks -Html $html -BaseUrl $Url) {
-      try {
-        $bossResponse = Invoke-UwuRequest -Url $bossLink.url
-        $bossSummary = Read-UwuPerformanceFromHtml ([string]$bossResponse.Content)
-        $record.bosses += [ordered]@{
-          name = $bossLink.name
-          mode = $bossLink.mode
-          duration = $bossLink.duration
-          url = $bossLink.url
-          players = @($bossSummary.players)
-          skipped = @($bossSummary.skipped)
-          performance = @($bossSummary.performance)
-          error = ""
-        }
-      } catch {
-        $record.bosses += [ordered]@{
-          name = $bossLink.name
-          mode = $bossLink.mode
-          duration = $bossLink.duration
-          url = $bossLink.url
-          players = @()
-          skipped = @()
-          performance = @()
-          error = ConvertTo-EnglishRequestError $_.Exception
-        }
-      }
-    }
   } catch {
     $record.error = ConvertTo-EnglishRequestError $_.Exception
   }
