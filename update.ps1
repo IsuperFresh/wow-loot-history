@@ -286,6 +286,13 @@ function New-AttendanceRecordFromCache {
   }
 }
 
+function Test-CachedAttendanceReady {
+  param($Cached)
+  if (-not $Cached -or $Cached.error) { return $false }
+  if (@($Cached.players).Count -le 0) { return $false }
+  return @($Cached.performance).Count -gt 0
+}
+
 function Get-CachedOrFetchAttendance {
   param(
     [string]$RaidId,
@@ -298,15 +305,17 @@ function Get-CachedOrFetchAttendance {
 
   $cacheKey = Get-AttendanceCacheKey $Url
   $cached = if ($script:attendanceCache.ContainsKey($cacheKey)) { $script:attendanceCache[$cacheKey] } else { $null }
-  if (-not $RefreshAttendance -and $cached) {
-    if (-not $cached.error -and @($cached.players).Count -gt 0) {
-      Write-Host "Using cached $Message`: $Url"
-      $script:lastAttendanceFromCache = $true
-      return New-AttendanceRecordFromCache -Cached $cached -RaidId $RaidId -Url $Url -Title $Title -Phase $Phase -Source $Source
-    }
+  if ((-not $RefreshAttendance -and $cached -and -not $cached.error -and @($cached.players).Count -gt 0) -or (Test-CachedAttendanceReady $cached)) {
+    Write-Host "Using cached $Message`: $Url"
+    $script:lastAttendanceFromCache = $true
+    return New-AttendanceRecordFromCache -Cached $cached -RaidId $RaidId -Url $Url -Title $Title -Phase $Phase -Source $Source
   }
 
-  Write-Host "Fetching $Message`: $Url"
+  if ($cached) {
+    Write-Host "Fetching missing performance for $Message`: $Url"
+  } else {
+    Write-Host "Fetching new $Message`: $Url"
+  }
   $script:lastAttendanceFromCache = $false
   $record = Get-UwuAttendance -RaidId $RaidId -Url $Url -Title $Title -Phase $Phase -Source $Source
   if (-not $record.error -and @($record.players).Count -gt 0) {
