@@ -5,8 +5,8 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$AttendanceMinDamageOrHealing = 200000
-$AttendanceCacheVersion = "min-damage-or-heal-200000-v1"
+$AttendanceMinDamageOrHealing = 100000
+$AttendanceCacheVersion = "min-activity-100000-v2"
 
 if (-not (Test-Path -LiteralPath $Source)) {
   throw "SoftResRoller.lua was not found: $Source"
@@ -187,11 +187,11 @@ function Get-UwuAttendance {
         continue
       }
 
-      $dpsIndex = Get-UwuColumnIndex -Headers $headers -Needles @("dps", "damage per second") -Fallback 6
-      $damageDoneIndex = Get-UwuColumnIndex -Headers $headers -Needles @("damage done", "dmg done", "total damage") -Fallback 7
+      $dpsIndex = Get-UwuColumnIndex -Headers $headers -Needles @("dps", "damage per second") -Fallback 3
+      $damageDoneIndex = Get-UwuColumnIndex -Headers $headers -Needles @("damage done", "dmg done", "total damage") -Fallback 4
       $hpsIndex = Get-UwuColumnIndex -Headers $headers -Needles @("hps", "healing per second") -Fallback 9
       $healingDoneIndex = Get-UwuColumnIndex -Headers $headers -Needles @("healing done", "heal done", "total healing") -Fallback 10
-      $damageTakenIndex = Get-UwuColumnIndex -Headers $headers -Needles @("damage taken", "dmg taken", "taken") -Fallback 4
+      $damageTakenIndex = Get-UwuColumnIndex -Headers $headers -Needles @("damage taken", "dmg taken", "taken") -Fallback 13
       $dps = if ($cells.Count -gt $dpsIndex) { ConvertTo-Number $cells[$dpsIndex] } else { 0 }
       $damageDone = if ($cells.Count -gt $damageDoneIndex) { ConvertTo-Number $cells[$damageDoneIndex] } else { 0 }
       $hps = if ($cells.Count -gt $hpsIndex) { ConvertTo-Number $cells[$hpsIndex] } else { 0 }
@@ -205,7 +205,7 @@ function Get-UwuAttendance {
         healingDone = $healingDone
         damageTaken = $damageTaken
       }
-      if ($damageDone -ge $AttendanceMinDamageOrHealing -or $healingDone -ge $AttendanceMinDamageOrHealing) {
+      if ($damageDone -ge $AttendanceMinDamageOrHealing -or $healingDone -ge $AttendanceMinDamageOrHealing -or $damageTaken -ge $AttendanceMinDamageOrHealing) {
         if (-not $seen.ContainsKey($name)) {
           $record.players += $name
           $seen[$name] = $true
@@ -290,7 +290,11 @@ function Test-CachedAttendanceReady {
   param($Cached)
   if (-not $Cached -or $Cached.error) { return $false }
   if (@($Cached.players).Count -le 0) { return $false }
-  return @($Cached.performance).Count -gt 0
+  $performance = @($Cached.performance)
+  if ($performance.Count -le 0) { return $false }
+  return [bool]($performance | Where-Object {
+    $_.dps -gt 0 -or $_.hps -gt 0 -or $_.damageDone -gt 0
+  } | Select-Object -First 1)
 }
 
 function Get-CachedOrFetchAttendance {

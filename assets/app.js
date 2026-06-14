@@ -745,25 +745,34 @@
           fetchedAt: record.fetchedAt || "",
           players: unique(ensureArray(record.players).map((name) => String(name || "").trim()).filter(Boolean)).sort((a, b) => a.localeCompare(b)),
           skipped: unique(ensureArray(record.skipped).map((name) => String(name || "").trim()).filter(Boolean)).sort((a, b) => a.localeCompare(b)),
-          performance: normalizePerformance(record.performance),
+          performance: normalizePerformance(record.performance, numberValue(record.minDamageOrHealing) >= 200000),
           error: record.error || ""
         };
       })
       .filter((record) => record.raidId || record.url);
   }
 
-  function normalizePerformance(rows) {
+  function normalizePerformance(rows, legacyTakenAsDamage = false) {
     return ensureArray(rows)
       .filter((row) => row && typeof row === "object")
-      .map((row) => ({
-        name: String(row.name || row.player || "").trim(),
-        dps: numberValue(row.dps),
-        hps: numberValue(row.hps),
-        damageDone: numberValue(row.damageDone),
-        healingDone: numberValue(row.healingDone),
-        damageTaken: numberValue(row.damageTaken)
-      }))
+      .map((row) => normalizePerformanceMetric(row, legacyTakenAsDamage))
       .filter((row) => row.name);
+  }
+
+  function normalizePerformanceMetric(row, legacyTakenAsDamage = false) {
+    const metric = {
+      name: String(row.name || row.player || "").trim(),
+      dps: numberValue(row.dps),
+      hps: numberValue(row.hps),
+      damageDone: numberValue(row.damageDone),
+      healingDone: numberValue(row.healingDone),
+      damageTaken: numberValue(row.damageTaken)
+    };
+    if (legacyTakenAsDamage && !metric.dps && !metric.hps && !metric.damageDone && metric.damageTaken > 0) {
+      metric.damageDone = metric.damageTaken;
+      metric.damageTaken = 0;
+    }
+    return metric;
   }
 
   function numberValue(value) {
@@ -780,7 +789,6 @@
     model.attendance.forEach((record) => {
       if (selectedPhase && record.phase !== selectedPhase) return;
       record.players.forEach((name) => names.push(name));
-      record.performance.forEach((row) => names.push(row.name));
     });
     return unique(names).sort((a, b) => a.localeCompare(b));
   }
@@ -860,7 +868,9 @@
           hpsTotal: 0,
           hpsSamples: 0,
           damageDone: 0,
+          damageDoneSamples: 0,
           healingDone: 0,
+          healingDoneSamples: 0,
           damageTaken: 0,
           damageTakenSamples: 0,
           tankMarks: 0
@@ -879,8 +889,8 @@
       const tanks = tankNamesForRecord(record);
       record.performance.forEach((metric) => {
         if (query && !normalizeName(metric.name).includes(query)) return;
+        if (!present.has(normalizeName(metric.name))) return;
         const row = get(metric.name);
-        if (!present.has(normalizeName(metric.name))) row.attended += 1;
         const hasMetric = metric.dps || metric.hps || metric.damageDone || metric.healingDone || metric.damageTaken;
         if (hasMetric) row.samples += 1;
         if (metric.dps > 0) {
@@ -894,6 +904,8 @@
         row.damageDone += metric.damageDone;
         row.healingDone += metric.healingDone;
         row.damageTaken += metric.damageTaken;
+        if (metric.damageDone > 0) row.damageDoneSamples += 1;
+        if (metric.healingDone > 0) row.healingDoneSamples += 1;
         if (metric.damageTaken > 0) row.damageTakenSamples += 1;
         if (tanks.has(normalizeName(metric.name))) row.tankMarks += 1;
       });
@@ -906,6 +918,8 @@
         percent,
         avgDps: row.dpsSamples ? row.dpsTotal / row.dpsSamples : 0,
         avgHps: row.hpsSamples ? row.hpsTotal / row.hpsSamples : 0,
+        avgDamageDone: row.damageDoneSamples ? row.damageDone / row.damageDoneSamples : 0,
+        avgHealingDone: row.healingDoneSamples ? row.healingDone / row.healingDoneSamples : 0,
         avgDamageTaken: row.damageTakenSamples ? row.damageTaken / row.damageTakenSamples : 0
       };
     }).filter((row) => row.attended || row.samples);
@@ -913,7 +927,7 @@
 
   function tankNamesForRecord(record) {
     const ranked = record.performance
-      .filter((row) => row.damageTaken > 0)
+      .filter((row) => row.damageTaken > 0 && isTankCandidate(row.name))
       .sort((a, b) => b.damageTaken - a.damageTaken);
     if (!ranked.length) return new Set();
     const top = ranked[0].damageTaken;
@@ -921,6 +935,18 @@
       .slice(0, 3)
       .filter((row) => row.damageTaken >= top * 0.55)
       .map((row) => normalizeName(row.name)));
+  }
+
+  function isTankCandidate(name) {
+    const info = model.playerInfo?.get(normalizeName(name));
+    const className = normalizeName(info?.className);
+    const spec = normalizeName(info?.spec);
+    if (className === "paladin" || className === "warrior") return spec === "protection";
+    if (className === "druid") return spec === "feral" || spec === "guardian";
+    if (className === "deathknight" || className === "death knight") {
+      return !spec || spec === "blood" || spec === "frost";
+    }
+    return false;
   }
 
   function attendanceOverviewCard(records, roster, playerQuery = "") {
@@ -1178,7 +1204,7 @@
   function performanceHeaderRow() {
     const row = document.createElement("div");
     row.className = "performanceRow performanceHeader";
-    ["Player", "Att", "Avg DPS", "Avg HPS", "Avg taken", "Tank", "Samples"].forEach((label) => {
+    ["Player", "Att", "Avg DPS", "Avg HPS", "Avg dmg", "Avg heal", "Avg taken", "Tank", "Samples"].forEach((label) => {
       const cell = document.createElement("span");
       cell.textContent = label;
       row.append(cell);
@@ -1201,6 +1227,10 @@
     dps.textContent = player.avgDps ? formatNumber(player.avgDps) : "-";
     const hps = document.createElement("span");
     hps.textContent = player.avgHps ? formatNumber(player.avgHps) : "-";
+    const damageDone = document.createElement("span");
+    damageDone.textContent = player.avgDamageDone ? formatNumber(player.avgDamageDone) : "-";
+    const healingDone = document.createElement("span");
+    healingDone.textContent = player.avgHealingDone ? formatNumber(player.avgHealingDone) : "-";
     const taken = document.createElement("span");
     taken.textContent = player.avgDamageTaken ? formatNumber(player.avgDamageTaken) : "-";
     const tank = document.createElement("span");
@@ -1209,7 +1239,7 @@
     const samples = document.createElement("span");
     samples.textContent = String(player.samples);
 
-    row.append(nameCell, attendance, dps, hps, taken, tank, samples);
+    row.append(nameCell, attendance, dps, hps, damageDone, healingDone, taken, tank, samples);
     return row;
   }
 
@@ -1217,9 +1247,9 @@
     return rows.sort((a, b) => {
       if (performanceSort === "name") return a.name.localeCompare(b.name);
       if (performanceSort === "attendance") return b.percent - a.percent || b.attended - a.attended || a.name.localeCompare(b.name);
-      if (performanceSort === "hps") return b.avgHps - a.avgHps || b.avgDps - a.avgDps || a.name.localeCompare(b.name);
+      if (performanceSort === "hps") return b.avgHps - a.avgHps || b.avgHealingDone - a.avgHealingDone || b.avgDps - a.avgDps || a.name.localeCompare(b.name);
       if (performanceSort === "taken") return b.avgDamageTaken - a.avgDamageTaken || b.tankMarks - a.tankMarks || a.name.localeCompare(b.name);
-      return b.avgDps - a.avgDps || b.avgHps - a.avgHps || a.name.localeCompare(b.name);
+      return b.avgDps - a.avgDps || b.avgDamageDone - a.avgDamageDone || b.avgHps - a.avgHps || a.name.localeCompare(b.name);
     });
   }
 
