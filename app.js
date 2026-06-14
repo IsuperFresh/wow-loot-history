@@ -1152,7 +1152,6 @@
     [
       ["dps", "By DPS"],
       ["hps", "By HPS"],
-      ["taken", "By taken"],
       ["attendance", "By attendance"],
       ["name", "By name"]
     ].forEach(([value, label]) => {
@@ -1210,7 +1209,7 @@
   function performanceHeaderRow() {
     const row = document.createElement("div");
     row.className = "performanceRow performanceHeader";
-    ["Player", "Att", "Avg DPS", "Avg HPS", "Avg dmg", "Avg heal", "Avg taken", "Tank"].forEach((label) => {
+    ["Player", "Att", "Avg DPS", "Avg HPS", "Tank"].forEach((label) => {
       const cell = document.createElement("span");
       cell.textContent = label;
       row.append(cell);
@@ -1233,16 +1232,10 @@
     dps.textContent = player.avgDps ? formatNumber(player.avgDps) : "-";
     const hps = document.createElement("span");
     hps.textContent = player.avgHps ? formatNumber(player.avgHps) : "-";
-    const damageDone = document.createElement("span");
-    damageDone.textContent = player.avgDamageDone ? formatNumber(player.avgDamageDone) : "-";
-    const healingDone = document.createElement("span");
-    healingDone.textContent = player.avgHealingDone ? formatNumber(player.avgHealingDone) : "-";
-    const taken = document.createElement("span");
-    taken.textContent = player.avgDamageTaken ? formatNumber(player.avgDamageTaken) : "-";
     const tank = document.createElement("span");
     tank.className = player.tankMarks ? "tankBadge active" : "tankBadge";
     tank.textContent = player.tankMarks ? `Tank ${player.tankMarks}` : "-";
-    row.append(nameCell, attendance, dps, hps, damageDone, healingDone, taken, tank);
+    row.append(nameCell, attendance, dps, hps, tank);
     return row;
   }
 
@@ -1251,7 +1244,6 @@
       if (performanceSort === "name") return a.name.localeCompare(b.name);
       if (performanceSort === "attendance") return b.percent - a.percent || b.attended - a.attended || a.name.localeCompare(b.name);
       if (performanceSort === "hps") return b.avgHps - a.avgHps || b.avgHealingDone - a.avgHealingDone || b.avgDps - a.avgDps || a.name.localeCompare(b.name);
-      if (performanceSort === "taken") return b.avgDamageTaken - a.avgDamageTaken || b.tankMarks - a.tankMarks || a.name.localeCompare(b.name);
       return b.avgDps - a.avgDps || b.avgDamageDone - a.avgDamageDone || b.avgHps - a.avgHps || a.name.localeCompare(b.name);
     });
   }
