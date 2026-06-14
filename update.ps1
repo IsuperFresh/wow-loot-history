@@ -6,7 +6,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $AttendanceMinDamageOrHealing = 100000
-$AttendanceCacheVersion = "min-activity-100000-v2"
+$AttendanceCacheVersion = "min-activity-100000-v4"
 
 if (-not (Test-Path -LiteralPath $Source)) {
   throw "SoftResRoller.lua was not found: $Source"
@@ -67,6 +67,35 @@ function Get-UwuColumnIndex {
         return $index
       }
     }
+  }
+
+  return $Fallback
+}
+
+function Get-HtmlClassList {
+  param([string]$Attributes)
+  $match = [regex]::Match($Attributes, 'class\s*=\s*["''](?<class>[^"'']+)["'']', 'IgnoreCase')
+  if (-not $match.Success) { return @() }
+  return @($match.Groups["class"].Value -split '\s+' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+}
+
+function Get-UwuCellIndex {
+  param(
+    [object[]]$Cells,
+    [string[]]$RequiredClasses,
+    [int]$Fallback
+  )
+
+  for ($index = 0; $index -lt $Cells.Count; $index++) {
+    $classes = @($Cells[$index].classes)
+    $matched = $true
+    foreach ($required in $RequiredClasses) {
+      if ($classes -notcontains $required) {
+        $matched = $false
+        break
+      }
+    }
+    if ($matched) { return $index }
   }
 
   return $Fallback
@@ -145,6 +174,78 @@ function Get-RaidLogUrls {
   return $urls
 }
 
+function Read-UwuPerformanceFromHtml {
+  param([string]$Html)
+
+  $result = [ordered]@{
+    players = @()
+    skipped = @()
+    performance = @()
+  }
+  $seen = @{}
+  foreach ($row in [regex]::Matches($Html, '<tr[\s\S]*?</tr>', 'IgnoreCase')) {
+    $cells = @()
+    foreach ($cell in [regex]::Matches($row.Value, '<t[dh](?<attrs>[^>]*)>(?<cell>[\s\S]*?)</t[dh]>', 'IgnoreCase')) {
+      $cells += [pscustomobject]@{
+        text = ConvertFrom-HtmlText $cell.Groups["cell"].Value
+        classes = @(Get-HtmlClassList $cell.Groups["attrs"].Value)
+      }
+    }
+    if ($cells.Count -lt 4) { continue }
+    $name = [string]$cells[0].text
+    if (-not $name -or $name -eq "Total" -or $name -eq "Name") { continue }
+
+    $dpsIndex = Get-UwuCellIndex -Cells $cells -RequiredClasses @("damage", "per-sec-cell") -Fallback 8
+    $damageDoneIndex = Get-UwuCellIndex -Cells $cells -RequiredClasses @("damage", "total-cell") -Fallback 7
+    $hpsIndex = Get-UwuCellIndex -Cells $cells -RequiredClasses @("heal", "per-sec-cell") -Fallback 11
+    $healingDoneIndex = Get-UwuCellIndex -Cells $cells -RequiredClasses @("heal", "total-cell") -Fallback 10
+    $damageTakenIndex = Get-UwuCellIndex -Cells $cells -RequiredClasses @("taken", "total-cell") -Fallback 16
+    $dps = if ($cells.Count -gt $dpsIndex) { ConvertTo-Number $cells[$dpsIndex].text } else { 0 }
+    $damageDone = if ($cells.Count -gt $damageDoneIndex) { ConvertTo-Number $cells[$damageDoneIndex].text } else { 0 }
+    $hps = if ($cells.Count -gt $hpsIndex) { ConvertTo-Number $cells[$hpsIndex].text } else { 0 }
+    $healingDone = if ($cells.Count -gt $healingDoneIndex) { ConvertTo-Number $cells[$healingDoneIndex].text } else { 0 }
+    $damageTaken = if ($cells.Count -gt $damageTakenIndex) { ConvertTo-Number $cells[$damageTakenIndex].text } else { 0 }
+    $result.performance += [ordered]@{
+      name = $name
+      dps = $dps
+      hps = $hps
+      damageDone = $damageDone
+      healingDone = $healingDone
+      damageTaken = $damageTaken
+    }
+    if ($damageDone -ge $AttendanceMinDamageOrHealing -or $healingDone -ge $AttendanceMinDamageOrHealing -or $damageTaken -ge $AttendanceMinDamageOrHealing) {
+      if (-not $seen.ContainsKey($name)) {
+        $result.players += $name
+        $seen[$name] = $true
+      }
+    } else {
+      $result.skipped += $name
+    }
+  }
+  return $result
+}
+
+function Get-UwuBossLinks {
+  param(
+    [string]$Html,
+    [string]$BaseUrl
+  )
+
+  $bosses = @()
+  foreach ($match in [regex]::Matches($Html, '<a\s+href="(?<href>[^"]+)"\s+class="kill-link">(?<text>[\s\S]*?)</a>', 'IgnoreCase')) {
+    $text = ConvertFrom-HtmlText $match.Groups["text"].Value
+    $parts = @($text -split '\s*\|\s*')
+    if ($parts.Count -lt 3) { continue }
+    $bosses += [ordered]@{
+      name = $parts[2]
+      mode = $parts[1]
+      duration = $parts[0]
+      url = ([Uri]::new([Uri]$BaseUrl, [System.Net.WebUtility]::HtmlDecode($match.Groups["href"].Value))).AbsoluteUri
+    }
+  }
+  return $bosses
+}
+
 function Get-UwuAttendance {
   param(
     [string]$RaidId,
@@ -164,6 +265,7 @@ function Get-UwuAttendance {
     players = @()
     skipped = @()
     performance = @()
+    bosses = @()
     minDamageOrHealing = $AttendanceMinDamageOrHealing
     error = ""
   }
@@ -172,46 +274,36 @@ function Get-UwuAttendance {
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
     $response = Invoke-UwuRequest -Url $Url
     $html = [string]$response.Content
-    $seen = @{}
-    $headers = @()
-    foreach ($row in [regex]::Matches($html, '<tr[\s\S]*?</tr>', 'IgnoreCase')) {
-      $cells = @()
-      foreach ($cell in [regex]::Matches($row.Value, '<t[dh][^>]*>(?<cell>[\s\S]*?)</t[dh]>', 'IgnoreCase')) {
-        $cells += ConvertFrom-HtmlText $cell.Groups["cell"].Value
-      }
-      if ($cells.Count -lt 4) { continue }
-      $name = $cells[0]
-      if (-not $name -or $name -eq "Total") { continue }
-      if ($name -eq "Name") {
-        $headers = $cells
-        continue
-      }
+    $summary = Read-UwuPerformanceFromHtml $html
+    $record.players = @($summary.players)
+    $record.skipped = @($summary.skipped)
+    $record.performance = @($summary.performance)
 
-      $dpsIndex = Get-UwuColumnIndex -Headers $headers -Needles @("dps", "damage per second") -Fallback 3
-      $damageDoneIndex = Get-UwuColumnIndex -Headers $headers -Needles @("damage done", "dmg done", "total damage") -Fallback 4
-      $hpsIndex = Get-UwuColumnIndex -Headers $headers -Needles @("hps", "healing per second") -Fallback 9
-      $healingDoneIndex = Get-UwuColumnIndex -Headers $headers -Needles @("healing done", "heal done", "total healing") -Fallback 10
-      $damageTakenIndex = Get-UwuColumnIndex -Headers $headers -Needles @("damage taken", "dmg taken", "taken") -Fallback 13
-      $dps = if ($cells.Count -gt $dpsIndex) { ConvertTo-Number $cells[$dpsIndex] } else { 0 }
-      $damageDone = if ($cells.Count -gt $damageDoneIndex) { ConvertTo-Number $cells[$damageDoneIndex] } else { 0 }
-      $hps = if ($cells.Count -gt $hpsIndex) { ConvertTo-Number $cells[$hpsIndex] } else { 0 }
-      $healingDone = if ($cells.Count -gt $healingDoneIndex) { ConvertTo-Number $cells[$healingDoneIndex] } else { 0 }
-      $damageTaken = if ($cells.Count -gt $damageTakenIndex) { ConvertTo-Number $cells[$damageTakenIndex] } else { 0 }
-      $record.performance += [ordered]@{
-        name = $name
-        dps = $dps
-        hps = $hps
-        damageDone = $damageDone
-        healingDone = $healingDone
-        damageTaken = $damageTaken
-      }
-      if ($damageDone -ge $AttendanceMinDamageOrHealing -or $healingDone -ge $AttendanceMinDamageOrHealing -or $damageTaken -ge $AttendanceMinDamageOrHealing) {
-        if (-not $seen.ContainsKey($name)) {
-          $record.players += $name
-          $seen[$name] = $true
+    foreach ($bossLink in Get-UwuBossLinks -Html $html -BaseUrl $Url) {
+      try {
+        $bossResponse = Invoke-UwuRequest -Url $bossLink.url
+        $bossSummary = Read-UwuPerformanceFromHtml ([string]$bossResponse.Content)
+        $record.bosses += [ordered]@{
+          name = $bossLink.name
+          mode = $bossLink.mode
+          duration = $bossLink.duration
+          url = $bossLink.url
+          players = @($bossSummary.players)
+          skipped = @($bossSummary.skipped)
+          performance = @($bossSummary.performance)
+          error = ""
         }
-      } else {
-        $record.skipped += $name
+      } catch {
+        $record.bosses += [ordered]@{
+          name = $bossLink.name
+          mode = $bossLink.mode
+          duration = $bossLink.duration
+          url = $bossLink.url
+          players = @()
+          skipped = @()
+          performance = @()
+          error = ConvertTo-EnglishRequestError $_.Exception
+        }
       }
     }
   } catch {
@@ -270,6 +362,7 @@ function New-AttendanceRecordFromCache {
   $players = @($Cached.players)
   $skipped = @($Cached.skipped)
   $performance = if ($null -ne $Cached.performance) { @($Cached.performance) } else { @() }
+  $bosses = if ($null -ne $Cached.bosses) { @($Cached.bosses) } else { @() }
   return [ordered]@{
     raidId = $RaidId
     title = $Title
@@ -280,6 +373,7 @@ function New-AttendanceRecordFromCache {
     players = $players
     skipped = $skipped
     performance = $performance
+    bosses = @($bosses)
     minDamageOrHealing = $AttendanceMinDamageOrHealing
     error = ""
     playerCount = $players.Count
@@ -292,9 +386,10 @@ function Test-CachedAttendanceReady {
   if (@($Cached.players).Count -le 0) { return $false }
   $performance = @($Cached.performance)
   if ($performance.Count -le 0) { return $false }
-  return [bool]($performance | Where-Object {
-    $_.dps -gt 0 -or $_.hps -gt 0 -or $_.damageDone -gt 0
+  $hasRates = [bool]($performance | Where-Object {
+    $_.dps -gt 0 -or $_.hps -gt 0
   } | Select-Object -First 1)
+  return $hasRates -and @($Cached.bosses).Count -gt 0
 }
 
 function Get-CachedOrFetchAttendance {
@@ -329,6 +424,7 @@ function Get-CachedOrFetchAttendance {
       players = @($record.players)
       skipped = @($record.skipped)
       performance = @($record.performance)
+      bosses = @($record.bosses)
       minDamageOrHealing = $AttendanceMinDamageOrHealing
       playerCount = @($record.players).Count
       error = ""

@@ -650,14 +650,14 @@
       const performanceRecords = selectedRaidId ? allPerformanceRecords : applyAttendanceRange(allPerformanceRecords);
       const roster = attendanceRoster(selectedPhase);
       const players = performanceRows(performanceRecords, roster, winnerQuery);
-      const metricSamples = players.reduce((sum, row) => sum + row.samples, 0);
-      setSummaryLabels("Players", "Samples", "Raids");
+      const bossCount = performanceRecords.reduce((sum, record) => sum + record.bosses.length, 0);
+      setSummaryLabels("Players", "Logs", "Bosses");
       els.raidTitle.textContent = selectedRaid
         ? `${selectedRaid.title} performance`
         : selectedPhase ? `${phaseLabel(selectedPhase)} performance` : "Performance";
       els.statPlayers.textContent = players.length;
-      els.statItems.textContent = metricSamples;
-      els.statRaids.textContent = performanceRecords.length;
+      els.statItems.textContent = performanceRecords.length;
+      els.statRaids.textContent = bossCount;
       renderPerformance(performanceRecords, players, selectedRaidId);
       return;
     }
@@ -746,6 +746,7 @@
           players: unique(ensureArray(record.players).map((name) => String(name || "").trim()).filter(Boolean)).sort((a, b) => a.localeCompare(b)),
           skipped: unique(ensureArray(record.skipped).map((name) => String(name || "").trim()).filter(Boolean)).sort((a, b) => a.localeCompare(b)),
           performance: normalizePerformance(record.performance, numberValue(record.minDamageOrHealing) >= 200000),
+          bosses: normalizeBosses(record.bosses, numberValue(record.minDamageOrHealing) >= 200000),
           error: record.error || ""
         };
       })
@@ -773,6 +774,28 @@
       metric.damageTaken = 0;
     }
     return metric;
+  }
+
+  function normalizeBosses(rows, legacyTakenAsDamage = false) {
+    return ensureArrayObject(rows)
+      .filter((row) => row && typeof row === "object")
+      .map((row) => ({
+        name: String(row.name || "").trim(),
+        mode: String(row.mode || "").trim(),
+        duration: String(row.duration || "").trim(),
+        url: String(row.url || "").trim(),
+        players: unique(ensureArray(row.players).map((name) => String(name || "").trim()).filter(Boolean)).sort((a, b) => a.localeCompare(b)),
+        skipped: unique(ensureArray(row.skipped).map((name) => String(name || "").trim()).filter(Boolean)).sort((a, b) => a.localeCompare(b)),
+        performance: normalizePerformance(row.performance, legacyTakenAsDamage),
+        error: row.error || ""
+      }))
+      .filter((row) => row.name || row.performance.length);
+  }
+
+  function ensureArrayObject(value) {
+    if (Array.isArray(value)) return value;
+    if (value && typeof value === "object") return [value];
+    return [];
   }
 
   function numberValue(value) {
@@ -833,9 +856,7 @@
     const count = document.createElement("strong");
     count.className = "countBadge";
     count.textContent = `${records.length} log${records.length === 1 ? "" : "s"}`;
-    const samples = document.createElement("p");
-    samples.textContent = `${players.reduce((sum, row) => sum + row.samples, 0)} player samples`;
-    stats.append(count, samples);
+    stats.append(count);
     header.append(title, stats);
 
     const table = document.createElement("div");
@@ -850,6 +871,42 @@
 
     card.append(header, performanceControls(), table);
     els.summaryList.append(card);
+
+    if (selectedRaidId) renderBossPerformance(records);
+  }
+
+  function renderBossPerformance(records) {
+    const roster = attendanceRoster(selectedPhase);
+    records.flatMap((record) => record.bosses.map((boss) => ({ record, boss }))).forEach(({ boss }) => {
+      if (!boss.performance.length) return;
+      const bossRecord = {
+        players: boss.players,
+        performance: boss.performance
+      };
+      const bossPlayers = sortPerformanceRows(performanceRows([bossRecord], roster, winnerQuery));
+      if (!bossPlayers.length) return;
+
+      const card = document.createElement("article");
+      card.className = "lootCard performanceCard";
+      const header = document.createElement("div");
+      header.className = "lootCardHeader";
+      const title = document.createElement("h3");
+      title.textContent = `${boss.name}${boss.mode ? ` ${boss.mode}` : ""}`;
+      const stats = document.createElement("div");
+      stats.className = "lootCardStats";
+      const duration = document.createElement("strong");
+      duration.className = "countBadge";
+      duration.textContent = boss.duration || "Boss";
+      stats.append(duration);
+      header.append(title, stats);
+
+      const table = document.createElement("div");
+      table.className = "performanceTable";
+      table.append(performanceHeaderRow());
+      bossPlayers.forEach((player) => table.append(performanceRow(player)));
+      card.append(header, table);
+      els.summaryList.append(card);
+    });
   }
 
   function performanceRows(records, roster, playerQuery = "") {
@@ -1204,7 +1261,7 @@
   function performanceHeaderRow() {
     const row = document.createElement("div");
     row.className = "performanceRow performanceHeader";
-    ["Player", "Att", "Avg DPS", "Avg HPS", "Avg dmg", "Avg heal", "Avg taken", "Tank", "Samples"].forEach((label) => {
+    ["Player", "Att", "Avg DPS", "Avg HPS", "Avg dmg", "Avg heal", "Avg taken", "Tank"].forEach((label) => {
       const cell = document.createElement("span");
       cell.textContent = label;
       row.append(cell);
@@ -1236,10 +1293,7 @@
     const tank = document.createElement("span");
     tank.className = player.tankMarks ? "tankBadge active" : "tankBadge";
     tank.textContent = player.tankMarks ? `Tank ${player.tankMarks}` : "-";
-    const samples = document.createElement("span");
-    samples.textContent = String(player.samples);
-
-    row.append(nameCell, attendance, dps, hps, damageDone, healingDone, taken, tank, samples);
+    row.append(nameCell, attendance, dps, hps, damageDone, healingDone, taken, tank);
     return row;
   }
 
