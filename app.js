@@ -974,10 +974,7 @@
         avgHps: row.hpsSamples ? row.hpsTotal / row.hpsSamples : 0,
         avgDamageDone,
         avgHealingDone,
-        avgDamageTaken,
-        damageScore: weightedPerformanceScore(avgDamageDone, row.damageDoneSamples),
-        healingScore: weightedPerformanceScore(avgHealingDone, row.healingDoneSamples),
-        takenScore: weightedPerformanceScore(avgDamageTaken, row.damageTakenSamples)
+        avgDamageTaken
       };
     }).filter((row) => row.attended || row.samples);
   }
@@ -988,10 +985,6 @@
     const middle = Math.floor(sorted.length / 2);
     if (sorted.length % 2) return sorted[middle];
     return (sorted[middle - 1] + sorted[middle]) / 2;
-  }
-
-  function weightedPerformanceScore(value, samples) {
-    return value * Math.min(1, Math.max(0, samples) / 5);
   }
 
   function attendanceOverviewCard(records, roster, playerQuery = "") {
@@ -1246,9 +1239,9 @@
     return rows.sort((a, b) => {
       if (performanceSort === "name") return a.name.localeCompare(b.name);
       if (performanceSort === "attendance") return b.percent - a.percent || b.attended - a.attended || a.name.localeCompare(b.name);
-      if (performanceSort === "heal") return b.healingScore - a.healingScore || b.avgHealingDone - a.avgHealingDone || b.avgDamageDone - a.avgDamageDone || a.name.localeCompare(b.name);
-      if (performanceSort === "taken") return b.takenScore - a.takenScore || b.avgDamageTaken - a.avgDamageTaken || b.avgDamageDone - a.avgDamageDone || a.name.localeCompare(b.name);
-      return b.damageScore - a.damageScore || b.avgDamageDone - a.avgDamageDone || b.avgHealingDone - a.avgHealingDone || a.name.localeCompare(b.name);
+      if (performanceSort === "heal") return b.avgHealingDone - a.avgHealingDone || b.avgDamageDone - a.avgDamageDone || a.name.localeCompare(b.name);
+      if (performanceSort === "taken") return b.avgDamageTaken - a.avgDamageTaken || b.avgDamageDone - a.avgDamageDone || a.name.localeCompare(b.name);
+      return b.avgDamageDone - a.avgDamageDone || b.avgHealingDone - a.avgHealingDone || a.name.localeCompare(b.name);
     });
   }
 
