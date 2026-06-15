@@ -651,7 +651,7 @@
         return true;
       }).sort(compareLogDateDesc);
       const performanceRecords = selectedRaidId ? allPerformanceRecords : applyAttendanceRange(allPerformanceRecords);
-      syncPerformanceBossFilter(performanceRecords);
+      syncPerformanceBossFilter(allPerformanceRecords);
       const roster = attendanceRoster(selectedPhase);
       const players = performanceRows(performanceRecords, roster, winnerQuery, performanceRequiresMinBosses(), performanceBossFilter);
       const samples = performanceBossEntries(performanceRecords, performanceBossFilter).reduce((sum, entry) => sum + entry.boss.performance.length, 0);
@@ -662,7 +662,7 @@
       els.statPlayers.textContent = players.length;
       els.statItems.textContent = samples;
       els.statRaids.textContent = performanceRecords.length;
-      renderPerformance(performanceRecords, players, selectedRaidId);
+      renderPerformance(performanceRecords, players, selectedRaidId, allPerformanceRecords);
       return;
     }
 
@@ -865,7 +865,7 @@
     els.summaryList.append(fragment);
   }
 
-  function renderPerformance(records, players, selectedRaidId) {
+  function renderPerformance(records, players, selectedRaidId, bossOptionRecords = records) {
     els.summaryList.innerHTML = "";
     if (!records.length) {
       els.summaryList.append(empty("No performance logs for this raid/filter yet."));
@@ -901,7 +901,7 @@
       visiblePlayers.forEach((player) => table.append(performanceRow(player)));
     }
 
-    card.append(header, performanceControls(records), table);
+    card.append(header, performanceControls(bossOptionRecords), table);
     els.summaryList.append(card);
   }
 
