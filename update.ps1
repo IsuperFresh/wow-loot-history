@@ -6,7 +6,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $AttendanceMinDamageOrHealing = 100000
-$AttendanceCacheVersion = "min-activity-100000-v5"
+$AttendanceCacheVersion = "min-activity-100000-boss-count-v6"
 
 if (-not (Test-Path -LiteralPath $Source)) {
   throw "SoftResRoller.lua was not found: $Source"
@@ -318,6 +318,7 @@ function Get-UwuAttendance {
     skipped = @()
     performance = @()
     bosses = @()
+    bossCount = 0
     minDamageOrHealing = $AttendanceMinDamageOrHealing
     error = ""
   }
@@ -330,6 +331,7 @@ function Get-UwuAttendance {
     $record.players = @($summary.players)
     $record.skipped = @($summary.skipped)
     $record.performance = @($summary.performance)
+    $record.bossCount = @(Get-UwuBossLinks -Html $html -BaseUrl $Url).Count
 
   } catch {
     $record.error = ConvertTo-EnglishRequestError $_.Exception
@@ -388,6 +390,7 @@ function New-AttendanceRecordFromCache {
   $skipped = @($Cached.skipped)
   $performance = if ($null -ne $Cached.performance) { @($Cached.performance) } else { @() }
   $bosses = if ($null -ne $Cached.bosses) { @($Cached.bosses) } else { @() }
+  $bossCount = if ($null -ne $Cached.bossCount) { [int]$Cached.bossCount } else { $bosses.Count }
   return [ordered]@{
     raidId = $RaidId
     title = $Title
@@ -399,6 +402,7 @@ function New-AttendanceRecordFromCache {
     skipped = $skipped
     performance = $performance
     bosses = @($bosses)
+    bossCount = $bossCount
     minDamageOrHealing = $AttendanceMinDamageOrHealing
     error = ""
     playerCount = $players.Count
@@ -414,7 +418,7 @@ function Test-CachedAttendanceReady {
   $hasRates = [bool]($performance | Where-Object {
     $_.dps -gt 0 -or $_.hps -gt 0
   } | Select-Object -First 1)
-  return $hasRates -and @($Cached.bosses).Count -gt 0
+  return $hasRates -and $Cached.bossCount -gt 0
 }
 
 function Get-CachedOrFetchAttendance {
@@ -450,6 +454,7 @@ function Get-CachedOrFetchAttendance {
       skipped = @($record.skipped)
       performance = @($record.performance)
       bosses = @($record.bosses)
+      bossCount = $record.bossCount
       minDamageOrHealing = $AttendanceMinDamageOrHealing
       playerCount = @($record.players).Count
       error = ""

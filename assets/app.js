@@ -748,6 +748,7 @@
           skipped: unique(ensureArray(record.skipped).map((name) => String(name || "").trim()).filter(Boolean)).sort((a, b) => a.localeCompare(b)),
           performance: normalizePerformance(record.performance, numberValue(record.minDamageOrHealing) >= 200000),
           bosses: normalizeBosses(record.bosses, numberValue(record.minDamageOrHealing) >= 200000),
+          bossCount: Math.max(1, Math.trunc(numberValue(record.bossCount) || ensureArray(record.bosses).length || 1)),
           error: record.error || ""
         };
       })
@@ -935,6 +936,7 @@
 
     metricRecords.forEach((record) => {
       const present = new Set(record.players.map(normalizeName));
+      const bossDivisor = Math.max(1, Math.trunc(numberValue(record.bossCount) || ensureArray(record.bosses).length || 1));
       record.performance.forEach((metric) => {
         if (query && !normalizeName(metric.name).includes(query)) return;
         if (!present.has(normalizeName(metric.name))) return;
@@ -949,9 +951,9 @@
           row.hpsTotal += metric.hps;
           row.hpsSamples += 1;
         }
-        row.damageDone += metric.damageDone;
-        row.healingDone += metric.healingDone;
-        row.damageTaken += metric.damageTaken;
+        row.damageDone += metric.damageDone / bossDivisor;
+        row.healingDone += metric.healingDone / bossDivisor;
+        row.damageTaken += metric.damageTaken / bossDivisor;
         if (metric.damageDone > 0) row.damageDoneSamples += 1;
         if (metric.healingDone > 0) row.healingDoneSamples += 1;
         if (metric.damageTaken > 0) row.damageTakenSamples += 1;
@@ -1228,7 +1230,7 @@
   function performanceHeaderRow() {
     const row = document.createElement("div");
     row.className = "performanceRow performanceHeader";
-    ["Player", "Att", "Avg dmg", "Avg heal", "Avg taken"].forEach((label) => {
+    ["Player", "Att", "Avg dmg/boss", "Avg heal/boss", "Avg taken/boss"].forEach((label) => {
       const cell = document.createElement("span");
       cell.textContent = label;
       row.append(cell);
