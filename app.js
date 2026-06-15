@@ -932,10 +932,10 @@
 
     metricRecords.forEach((record) => {
       const present = new Set(record.players.map(normalizeName));
-      const bossDivisor = Math.max(1, Math.trunc(numberValue(record.bossCount) || ensureArray(record.bosses).length || 1));
       record.performance.forEach((metric) => {
         if (playerQuery && !normalizeName(metric.name).includes(normalizeName(playerQuery))) return;
         if (!present.has(normalizeName(metric.name))) return;
+        const bossDivisor = playerBossCountForRecord(record, metric.name);
         const row = get(metric.name);
         const hasMetric = metric.dps || metric.hps || metric.damageDone || metric.healingDone || metric.damageTaken;
         if (hasMetric) {
@@ -987,6 +987,14 @@
         avgDamageTaken
       };
     }).filter((row) => row.attended || row.samples);
+  }
+
+  function playerBossCountForRecord(record, playerName) {
+    const playerKey = normalizeName(playerName);
+    const bosses = ensureArray(record.bosses);
+    const matchedBosses = bosses.filter((boss) => ensureArray(boss.players).some((name) => normalizeName(name) === playerKey)).length;
+    if (matchedBosses > 0) return matchedBosses;
+    return Math.max(1, Math.trunc(numberValue(record.bossCount) || bosses.length || 1));
   }
 
   function median(values) {

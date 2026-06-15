@@ -6,7 +6,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $AttendanceMinDamageOrHealing = 100000
-$AttendanceCacheVersion = "min-activity-100000-boss-count-v6"
+$AttendanceCacheVersion = "min-activity-100000-player-bosses-v7"
 
 if (-not (Test-Path -LiteralPath $Source)) {
   throw "SoftResRoller.lua was not found: $Source"
@@ -331,7 +331,36 @@ function Get-UwuAttendance {
     $record.players = @($summary.players)
     $record.skipped = @($summary.skipped)
     $record.performance = @($summary.performance)
-    $record.bossCount = @(Get-UwuBossLinks -Html $html -BaseUrl $Url).Count
+    $bossLinks = @(Get-UwuBossLinks -Html $html -BaseUrl $Url)
+    $record.bossCount = $bossLinks.Count
+
+    foreach ($bossLink in $bossLinks) {
+      try {
+        $bossResponse = Invoke-UwuRequest -Url $bossLink.url
+        $bossSummary = Read-UwuPerformanceFromHtml ([string]$bossResponse.Content)
+        $record.bosses += [ordered]@{
+          name = $bossLink.name
+          mode = $bossLink.mode
+          duration = $bossLink.duration
+          url = $bossLink.url
+          players = @($bossSummary.players)
+          skipped = @($bossSummary.skipped)
+          performance = @()
+          error = ""
+        }
+      } catch {
+        $record.bosses += [ordered]@{
+          name = $bossLink.name
+          mode = $bossLink.mode
+          duration = $bossLink.duration
+          url = $bossLink.url
+          players = @()
+          skipped = @()
+          performance = @()
+          error = ConvertTo-EnglishRequestError $_.Exception
+        }
+      }
+    }
 
   } catch {
     $record.error = ConvertTo-EnglishRequestError $_.Exception
@@ -418,7 +447,7 @@ function Test-CachedAttendanceReady {
   $hasRates = [bool]($performance | Where-Object {
     $_.dps -gt 0 -or $_.hps -gt 0
   } | Select-Object -First 1)
-  return $hasRates -and $Cached.bossCount -gt 0
+  return $hasRates -and $Cached.bossCount -gt 0 -and @($Cached.bosses).Count -gt 0
 }
 
 function Get-CachedOrFetchAttendance {
