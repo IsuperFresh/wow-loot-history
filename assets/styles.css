@@ -731,6 +731,13 @@ a.itemName:hover {
   color: var(--gold);
 }
 
+.performanceInsufficient {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
 .tankBadge {
   color: var(--muted);
   font-weight: 850;

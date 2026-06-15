@@ -28,6 +28,7 @@
   let attendanceRange = "all";
   let attendanceLimit = 5;
   let performanceSort = "damage";
+  const PERFORMANCE_MIN_BOSSES = 20;
   let model = {
     winners: [],
     reserves: [],
@@ -912,6 +913,7 @@
           attended: 0,
           total: records.length,
           samples: 0,
+          bossSamples: 0,
           dpsTotal: 0,
           dpsSamples: 0,
           hpsTotal: 0,
@@ -945,7 +947,10 @@
         if (!present.has(normalizeName(metric.name))) return;
         const row = get(metric.name);
         const hasMetric = metric.dps || metric.hps || metric.damageDone || metric.healingDone || metric.damageTaken;
-        if (hasMetric) row.samples += 1;
+        if (hasMetric) {
+          row.samples += 1;
+          row.bossSamples += bossDivisor;
+        }
         if (metric.dps > 0) {
           row.dpsTotal += metric.dps;
           row.dpsSamples += 1;
@@ -983,6 +988,7 @@
       return {
         ...row,
         percent,
+        hasEnoughPerformance: row.bossSamples >= PERFORMANCE_MIN_BOSSES,
         avgDps: row.dpsSamples ? row.dpsTotal / row.dpsSamples : 0,
         avgHps: row.hpsSamples ? row.hpsTotal / row.hpsSamples : 0,
         avgDamageDone,
@@ -1275,12 +1281,17 @@
 
     const attendance = document.createElement("strong");
     attendance.textContent = `${player.attended}/${player.total} (${player.percent}%)`;
+    attendance.title = `${player.bossSamples} boss kills counted`;
     const damage = document.createElement("span");
-    damage.textContent = player.avgDamageDone ? formatNumber(player.avgDamageDone) : "-";
+    damage.textContent = player.hasEnoughPerformance ? (player.avgDamageDone ? formatNumber(player.avgDamageDone) : "-") : "Not enough data";
+    if (!player.hasEnoughPerformance) {
+      damage.className = "performanceInsufficient";
+      damage.title = `${player.bossSamples}/${PERFORMANCE_MIN_BOSSES} boss kills counted`;
+    }
     const heal = document.createElement("span");
-    heal.textContent = player.avgHealingDone ? formatNumber(player.avgHealingDone) : "-";
+    heal.textContent = player.hasEnoughPerformance ? (player.avgHealingDone ? formatNumber(player.avgHealingDone) : "-") : "-";
     const taken = document.createElement("span");
-    taken.textContent = player.avgDamageTaken ? formatNumber(player.avgDamageTaken) : "-";
+    taken.textContent = player.hasEnoughPerformance ? (player.avgDamageTaken ? formatNumber(player.avgDamageTaken) : "-") : "-";
     row.append(nameCell, attendance, damage, heal, taken);
     return row;
   }
@@ -1289,6 +1300,7 @@
     return rows.sort((a, b) => {
       if (performanceSort === "name") return a.name.localeCompare(b.name);
       if (performanceSort === "attendance") return b.percent - a.percent || b.attended - a.attended || a.name.localeCompare(b.name);
+      if (a.hasEnoughPerformance !== b.hasEnoughPerformance) return Number(b.hasEnoughPerformance) - Number(a.hasEnoughPerformance);
       if (performanceSort === "heal") return b.avgHealingDone - a.avgHealingDone || b.avgDamageDone - a.avgDamageDone || a.name.localeCompare(b.name);
       if (performanceSort === "taken") return b.avgDamageTaken - a.avgDamageTaken || b.avgDamageDone - a.avgDamageDone || a.name.localeCompare(b.name);
       return b.avgDamageDone - a.avgDamageDone || b.avgHealingDone - a.avgHealingDone || a.name.localeCompare(b.name);
