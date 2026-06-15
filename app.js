@@ -903,10 +903,13 @@
           hpsSamples: 0,
           damageDone: 0,
           damageDoneSamples: 0,
+          damageDoneValues: [],
           healingDone: 0,
           healingDoneSamples: 0,
+          healingDoneValues: [],
           damageTaken: 0,
-          damageTakenSamples: 0
+          damageTakenSamples: 0,
+          damageTakenValues: []
         });
       }
       return map.get(key);
@@ -938,27 +941,57 @@
           row.hpsTotal += metric.hps;
           row.hpsSamples += 1;
         }
-        row.damageDone += metric.damageDone / bossDivisor;
-        row.healingDone += metric.healingDone / bossDivisor;
-        row.damageTaken += metric.damageTaken / bossDivisor;
-        if (metric.damageDone > 0) row.damageDoneSamples += 1;
-        if (metric.healingDone > 0) row.healingDoneSamples += 1;
-        if (metric.damageTaken > 0) row.damageTakenSamples += 1;
+        const damageDone = metric.damageDone / bossDivisor;
+        const healingDone = metric.healingDone / bossDivisor;
+        const damageTaken = metric.damageTaken / bossDivisor;
+        row.damageDone += damageDone;
+        row.healingDone += healingDone;
+        row.damageTaken += damageTaken;
+        if (metric.damageDone > 0) {
+          row.damageDoneSamples += 1;
+          row.damageDoneValues.push(damageDone);
+        }
+        if (metric.healingDone > 0) {
+          row.healingDoneSamples += 1;
+          row.healingDoneValues.push(healingDone);
+        }
+        if (metric.damageTaken > 0) {
+          row.damageTakenSamples += 1;
+          row.damageTakenValues.push(damageTaken);
+        }
       });
     });
 
     return Array.from(map.values()).map((row) => {
       const percent = row.total ? Math.round((row.attended / row.total) * 100) : 0;
+      const avgDamageDone = median(row.damageDoneValues);
+      const avgHealingDone = median(row.healingDoneValues);
+      const avgDamageTaken = median(row.damageTakenValues);
       return {
         ...row,
         percent,
         avgDps: row.dpsSamples ? row.dpsTotal / row.dpsSamples : 0,
         avgHps: row.hpsSamples ? row.hpsTotal / row.hpsSamples : 0,
-        avgDamageDone: row.damageDoneSamples ? row.damageDone / row.damageDoneSamples : 0,
-        avgHealingDone: row.healingDoneSamples ? row.healingDone / row.healingDoneSamples : 0,
-        avgDamageTaken: row.damageTakenSamples ? row.damageTaken / row.damageTakenSamples : 0
+        avgDamageDone,
+        avgHealingDone,
+        avgDamageTaken,
+        damageScore: weightedPerformanceScore(avgDamageDone, row.damageDoneSamples),
+        healingScore: weightedPerformanceScore(avgHealingDone, row.healingDoneSamples),
+        takenScore: weightedPerformanceScore(avgDamageTaken, row.damageTakenSamples)
       };
     }).filter((row) => row.attended || row.samples);
+  }
+
+  function median(values) {
+    const sorted = values.filter((value) => Number.isFinite(value) && value > 0).sort((a, b) => a - b);
+    if (!sorted.length) return 0;
+    const middle = Math.floor(sorted.length / 2);
+    if (sorted.length % 2) return sorted[middle];
+    return (sorted[middle - 1] + sorted[middle]) / 2;
+  }
+
+  function weightedPerformanceScore(value, samples) {
+    return value * Math.min(1, Math.max(0, samples) / 5);
   }
 
   function attendanceOverviewCard(records, roster, playerQuery = "") {
@@ -1180,7 +1213,7 @@
   function performanceHeaderRow() {
     const row = document.createElement("div");
     row.className = "performanceRow performanceHeader";
-    ["Player", "Att", "Avg dmg/boss", "Avg heal/boss", "Avg taken/boss"].forEach((label) => {
+    ["Player", "Att", "Med dmg/boss", "Med heal/boss", "Med taken/boss"].forEach((label) => {
       const cell = document.createElement("span");
       cell.textContent = label;
       row.append(cell);
@@ -1213,9 +1246,9 @@
     return rows.sort((a, b) => {
       if (performanceSort === "name") return a.name.localeCompare(b.name);
       if (performanceSort === "attendance") return b.percent - a.percent || b.attended - a.attended || a.name.localeCompare(b.name);
-      if (performanceSort === "heal") return b.avgHealingDone - a.avgHealingDone || b.avgDamageDone - a.avgDamageDone || a.name.localeCompare(b.name);
-      if (performanceSort === "taken") return b.avgDamageTaken - a.avgDamageTaken || b.avgDamageDone - a.avgDamageDone || a.name.localeCompare(b.name);
-      return b.avgDamageDone - a.avgDamageDone || b.avgHealingDone - a.avgHealingDone || a.name.localeCompare(b.name);
+      if (performanceSort === "heal") return b.healingScore - a.healingScore || b.avgHealingDone - a.avgHealingDone || b.avgDamageDone - a.avgDamageDone || a.name.localeCompare(b.name);
+      if (performanceSort === "taken") return b.takenScore - a.takenScore || b.avgDamageTaken - a.avgDamageTaken || b.avgDamageDone - a.avgDamageDone || a.name.localeCompare(b.name);
+      return b.damageScore - a.damageScore || b.avgDamageDone - a.avgDamageDone || b.avgHealingDone - a.avgHealingDone || a.name.localeCompare(b.name);
     });
   }
 
