@@ -651,7 +651,7 @@
       }).sort(compareLogDateDesc);
       const performanceRecords = selectedRaidId ? allPerformanceRecords : applyAttendanceRange(allPerformanceRecords);
       const roster = attendanceRoster(selectedPhase);
-      const players = performanceRows(performanceRecords, roster, winnerQuery);
+      const players = performanceRows(performanceRecords, roster, winnerQuery, performanceRequiresMinBosses());
       const samples = performanceRecords.reduce((sum, record) => sum + record.performance.length, 0);
       setSummaryLabels("Players", "Samples", "Logs");
       els.raidTitle.textContent = selectedRaid
@@ -902,7 +902,11 @@
     els.summaryList.append(card);
   }
 
-  function performanceRows(records, roster, playerQuery = "", metricRecords = records) {
+  function performanceRequiresMinBosses() {
+    return attendanceRange !== "last";
+  }
+
+  function performanceRows(records, roster, playerQuery = "", requireMinBosses = true, metricRecords = records) {
     const map = new Map();
     const query = normalizeName(playerQuery);
     const get = (name) => {
@@ -988,7 +992,7 @@
       return {
         ...row,
         percent,
-        hasEnoughPerformance: row.bossSamples >= PERFORMANCE_MIN_BOSSES,
+        hasEnoughPerformance: !requireMinBosses || row.bossSamples >= PERFORMANCE_MIN_BOSSES,
         avgDps: row.dpsSamples ? row.dpsTotal / row.dpsSamples : 0,
         avgHps: row.hpsSamples ? row.hpsTotal / row.hpsSamples : 0,
         avgDamageDone,
