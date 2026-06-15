@@ -695,7 +695,7 @@ a.itemName:hover {
 
 .performanceRow {
   display: grid;
-  grid-template-columns: minmax(150px, 1.15fr) 100px repeat(3, minmax(110px, 0.8fr));
+  grid-template-columns: minmax(150px, 1.15fr) 100px repeat(6, minmax(105px, 0.8fr));
   gap: 8px;
   align-items: center;
   min-height: 32px;
@@ -935,8 +935,8 @@ a.itemName:hover {
   }
 
   .performanceRow {
-    grid-template-columns: 150px 96px 110px 110px 110px;
-    min-width: 600px;
+    grid-template-columns: 150px 96px repeat(6, 105px);
+    min-width: 876px;
   }
 }
 

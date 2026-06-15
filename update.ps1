@@ -6,7 +6,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $AttendanceMinDamageOrHealing = 100000
-$AttendanceCacheVersion = "min-activity-100000-player-bosses-v7"
+$AttendanceCacheVersion = "min-activity-100000-boss-performance-v8"
 
 if (-not (Test-Path -LiteralPath $Source)) {
   throw "SoftResRoller.lua was not found: $Source"
@@ -250,11 +250,13 @@ function Read-UwuPerformanceFromHtml {
     $hpsIndex = Get-UwuCellIndex -Cells $cells -RequiredClasses @("heal", "per-sec-cell") -Fallback 11
     $healingDoneIndex = Get-UwuCellIndex -Cells $cells -RequiredClasses @("heal", "total-cell") -Fallback 10
     $damageTakenIndex = Get-UwuCellIndex -Cells $cells -RequiredClasses @("taken", "total-cell") -Fallback 16
+    $damageTakenPerSecondIndex = Get-UwuCellIndex -Cells $cells -RequiredClasses @("taken", "per-sec-cell") -Fallback 17
     $dps = if ($cells.Count -gt $dpsIndex) { ConvertTo-Number $cells[$dpsIndex].text } else { 0 }
     $damageDone = if ($cells.Count -gt $damageDoneIndex) { ConvertTo-Number $cells[$damageDoneIndex].text } else { 0 }
     $hps = if ($cells.Count -gt $hpsIndex) { ConvertTo-Number $cells[$hpsIndex].text } else { 0 }
     $healingDone = if ($cells.Count -gt $healingDoneIndex) { ConvertTo-Number $cells[$healingDoneIndex].text } else { 0 }
     $damageTaken = if ($cells.Count -gt $damageTakenIndex) { ConvertTo-Number $cells[$damageTakenIndex].text } else { 0 }
+    $damageTakenPerSecond = if ($cells.Count -gt $damageTakenPerSecondIndex) { ConvertTo-Number $cells[$damageTakenPerSecondIndex].text } else { 0 }
     $result.performance += [ordered]@{
       name = $name
       dps = $dps
@@ -262,6 +264,7 @@ function Read-UwuPerformanceFromHtml {
       damageDone = $damageDone
       healingDone = $healingDone
       damageTaken = $damageTaken
+      damageTakenPerSecond = $damageTakenPerSecond
       className = $classSpec.className
       spec = $classSpec.spec
     }
@@ -345,7 +348,7 @@ function Get-UwuAttendance {
           url = $bossLink.url
           players = @($bossSummary.players)
           skipped = @($bossSummary.skipped)
-          performance = @()
+          performance = @($bossSummary.performance)
           error = ""
         }
       } catch {
@@ -447,7 +450,10 @@ function Test-CachedAttendanceReady {
   $hasRates = [bool]($performance | Where-Object {
     $_.dps -gt 0 -or $_.hps -gt 0
   } | Select-Object -First 1)
-  return $hasRates -and $Cached.bossCount -gt 0 -and @($Cached.bosses).Count -gt 0
+  $hasBossPerformance = [bool](@($Cached.bosses) | Where-Object {
+    @($_.performance).Count -gt 0
+  } | Select-Object -First 1)
+  return $hasRates -and $Cached.bossCount -gt 0 -and $hasBossPerformance
 }
 
 function Get-CachedOrFetchAttendance {

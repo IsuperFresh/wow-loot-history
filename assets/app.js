@@ -27,7 +27,8 @@
   let attendanceBucket = "all";
   let attendanceRange = "all";
   let attendanceLimit = 5;
-  let performanceSort = "damage";
+  let performanceSort = "dps";
+  let performanceBossFilter = "all";
   const PERFORMANCE_MIN_BOSSES = 20;
   let model = {
     winners: [],
@@ -650,10 +651,11 @@
         return true;
       }).sort(compareLogDateDesc);
       const performanceRecords = selectedRaidId ? allPerformanceRecords : applyAttendanceRange(allPerformanceRecords);
+      syncPerformanceBossFilter(performanceRecords);
       const roster = attendanceRoster(selectedPhase);
-      const players = performanceRows(performanceRecords, roster, winnerQuery, performanceRequiresMinBosses());
-      const samples = performanceRecords.reduce((sum, record) => sum + record.performance.length, 0);
-      setSummaryLabels("Players", "Samples", "Logs");
+      const players = performanceRows(performanceRecords, roster, winnerQuery, performanceRequiresMinBosses(), performanceBossFilter);
+      const samples = performanceBossEntries(performanceRecords, performanceBossFilter).reduce((sum, entry) => sum + entry.boss.performance.length, 0);
+      setSummaryLabels("Players", "Boss samples", "Logs");
       els.raidTitle.textContent = selectedRaid
         ? `${selectedRaid.title} performance`
         : selectedPhase ? `${phaseLabel(selectedPhase)} performance` : "Performance";
@@ -771,6 +773,7 @@
       damageDone: numberValue(row.damageDone),
       healingDone: numberValue(row.healingDone),
       damageTaken: numberValue(row.damageTaken),
+      damageTakenPerSecond: numberValue(row.damageTakenPerSecond || row.dtps),
       className: String(row.className || row.class || "").trim(),
       spec: String(row.spec || "").trim()
     };
@@ -898,15 +901,30 @@
       visiblePlayers.forEach((player) => table.append(performanceRow(player)));
     }
 
-    card.append(header, performanceControls(), table);
+    card.append(header, performanceControls(records), table);
     els.summaryList.append(card);
   }
 
-  function performanceRequiresMinBosses() {
-    return attendanceRange !== "last";
+  function syncPerformanceBossFilter(records) {
+    if (performanceBossFilter === "all") return;
+    const selected = normalizeName(performanceBossFilter);
+    const hasBoss = availablePerformanceBosses(records).some((boss) => normalizeName(boss) === selected);
+    if (!hasBoss) performanceBossFilter = "all";
   }
 
-  function performanceRows(records, roster, playerQuery = "", requireMinBosses = true, metricRecords = records) {
+  function availablePerformanceBosses(records) {
+    return unique(records.flatMap((record) => ensureArray(record.bosses).map((boss) => String(boss.name || "").trim()).filter(Boolean)))
+      .sort((a, b) => a.localeCompare(b));
+  }
+
+  function performanceRequiresMinBosses() {
+    return attendanceRange !== "last" && performanceBossFilter === "all";
+  }
+
+  function performanceRows(records, roster, playerQuery = "", requireMinBosses = true, bossFilter = "all") {
+    const bossEntries = performanceBossEntries(records, bossFilter);
+    const isBossFiltered = bossFilter !== "all";
+    const totalCount = isBossFiltered ? bossEntries.length : records.length;
     const map = new Map();
     const query = normalizeName(playerQuery);
     const get = (name) => {
@@ -915,99 +933,90 @@
         map.set(key, {
           name,
           attended: 0,
-          total: records.length,
+          total: totalCount,
           samples: 0,
           bossSamples: 0,
-          dpsTotal: 0,
-          dpsSamples: 0,
-          hpsTotal: 0,
-          hpsSamples: 0,
-          damageDone: 0,
-          damageDoneSamples: 0,
-          damageDoneValues: [],
-          healingDone: 0,
-          healingDoneSamples: 0,
-          healingDoneValues: [],
-          damageTaken: 0,
-          damageTakenSamples: 0,
-          damageTakenValues: []
+          bossDamageValues: [],
+          dpsValues: [],
+          bossHealingValues: [],
+          hpsValues: [],
+          takenPerSecondValues: [],
+          instanceDamageValues: []
         });
       }
       return map.get(key);
     };
 
     filterNames(roster, playerQuery).forEach((name) => get(name));
-    records.forEach((record) => {
-      record.players.forEach((name) => {
-        if (!query || normalizeName(name).includes(query)) get(name).attended += 1;
+    if (isBossFiltered) {
+      bossEntries.forEach(({ boss }) => {
+        boss.players.forEach((name) => {
+          if (!query || normalizeName(name).includes(query)) get(name).attended += 1;
+        });
       });
-    });
+    } else {
+      records.forEach((record) => {
+        record.players.forEach((name) => {
+          if (!query || normalizeName(name).includes(query)) get(name).attended += 1;
+        });
+      });
+    }
 
-    metricRecords.forEach((record) => {
+    records.forEach((record) => {
       const present = new Set(record.players.map(normalizeName));
       record.performance.forEach((metric) => {
         if (query && !normalizeName(metric.name).includes(query)) return;
         if (!present.has(normalizeName(metric.name))) return;
-        const bossDivisor = playerBossCountForRecord(record, metric.name);
+        if (isBossFiltered && !playerWasOnBossInRecord(record, metric.name, bossFilter)) return;
         const row = get(metric.name);
-        const hasMetric = metric.dps || metric.hps || metric.damageDone || metric.healingDone || metric.damageTaken;
-        if (hasMetric) {
-          row.samples += 1;
-          row.bossSamples += bossDivisor;
-        }
-        if (metric.dps > 0) {
-          row.dpsTotal += metric.dps;
-          row.dpsSamples += 1;
-        }
-        if (metric.hps > 0) {
-          row.hpsTotal += metric.hps;
-          row.hpsSamples += 1;
-        }
-        const damageDone = metric.damageDone / bossDivisor;
-        const healingDone = metric.healingDone / bossDivisor;
-        const damageTaken = metric.damageTaken / bossDivisor;
-        row.damageDone += damageDone;
-        row.healingDone += healingDone;
-        row.damageTaken += damageTaken;
-        if (metric.damageDone > 0) {
-          row.damageDoneSamples += 1;
-          row.damageDoneValues.push(damageDone);
-        }
-        if (metric.healingDone > 0) {
-          row.healingDoneSamples += 1;
-          row.healingDoneValues.push(healingDone);
-        }
-        if (metric.damageTaken > 0) {
-          row.damageTakenSamples += 1;
-          row.damageTakenValues.push(damageTaken);
-        }
+        if (metric.damageDone > 0) row.instanceDamageValues.push(metric.damageDone);
+      });
+    });
+
+    bossEntries.forEach(({ boss }) => {
+      const present = new Set(boss.players.map(normalizeName));
+      boss.performance.forEach((metric) => {
+        if (query && !normalizeName(metric.name).includes(query)) return;
+        if (!present.has(normalizeName(metric.name))) return;
+        const row = get(metric.name);
+        const hasMetric = metric.dps || metric.hps || metric.damageTakenPerSecond || metric.damageTaken;
+        if (hasMetric) row.samples += 1;
+        row.bossSamples += 1;
+        if (metric.damageDone > 0) row.bossDamageValues.push(metric.damageDone);
+        if (metric.dps > 0) row.dpsValues.push(metric.dps);
+        if (metric.healingDone > 0) row.bossHealingValues.push(metric.healingDone);
+        if (metric.hps > 0) row.hpsValues.push(metric.hps);
+        if (metric.damageTakenPerSecond > 0) row.takenPerSecondValues.push(metric.damageTakenPerSecond);
       });
     });
 
     return Array.from(map.values()).map((row) => {
       const percent = row.total ? Math.round((row.attended / row.total) * 100) : 0;
-      const avgDamageDone = median(row.damageDoneValues);
-      const avgHealingDone = median(row.healingDoneValues);
-      const avgDamageTaken = median(row.damageTakenValues);
       return {
         ...row,
         percent,
         hasEnoughPerformance: !requireMinBosses || row.bossSamples >= PERFORMANCE_MIN_BOSSES,
-        avgDps: row.dpsSamples ? row.dpsTotal / row.dpsSamples : 0,
-        avgHps: row.hpsSamples ? row.hpsTotal / row.hpsSamples : 0,
-        avgDamageDone,
-        avgHealingDone,
-        avgDamageTaken
+        avgDamageDone: median(row.bossDamageValues),
+        avgDps: median(row.dpsValues),
+        avgHealingDone: median(row.bossHealingValues),
+        avgHps: median(row.hpsValues),
+        avgDamageTaken: median(row.takenPerSecondValues),
+        avgInstanceDamage: median(row.instanceDamageValues)
       };
     }).filter((row) => row.attended || row.samples);
   }
 
-  function playerBossCountForRecord(record, playerName) {
+  function performanceBossEntries(records, bossFilter = "all") {
+    const filterKey = normalizeName(bossFilter);
+    return records.flatMap((record) => ensureArray(record.bosses)
+      .filter((boss) => bossFilter === "all" || normalizeName(boss.name) === filterKey)
+      .map((boss) => ({ record, boss })));
+  }
+
+  function playerWasOnBossInRecord(record, playerName, bossFilter) {
     const playerKey = normalizeName(playerName);
-    const bosses = ensureArray(record.bosses);
-    const matchedBosses = bosses.filter((boss) => ensureArray(boss.players).some((name) => normalizeName(name) === playerKey)).length;
-    if (matchedBosses > 0) return matchedBosses;
-    return Math.max(1, Math.trunc(numberValue(record.bossCount) || bosses.length || 1));
+    return performanceBossEntries([record], bossFilter)
+      .some(({ boss }) => ensureArray(boss.players).some((name) => normalizeName(name) === playerKey));
   }
 
   function median(values) {
@@ -1202,7 +1211,7 @@
     return controls;
   }
 
-  function performanceControls() {
+  function performanceControls(records) {
     const controls = document.createElement("div");
     controls.className = "attendanceControls performanceControls";
 
@@ -1212,15 +1221,18 @@
     sortText.textContent = "Sort";
     const sortSelect = document.createElement("select");
     [
+      ["dps", "By DPS"],
       ["damage", "By dmg"],
+      ["hps", "By HPS"],
       ["heal", "By heal"],
       ["taken", "By taken"],
+      ["instance", "By inst dmg"],
       ["attendance", "By attendance"],
       ["name", "By name"]
     ].forEach(([value, label]) => {
       sortSelect.append(new Option(label, value));
     });
-    if (!["damage", "heal", "taken", "attendance", "name"].includes(performanceSort)) performanceSort = "damage";
+    if (!["dps", "damage", "hps", "heal", "taken", "instance", "attendance", "name"].includes(performanceSort)) performanceSort = "dps";
     sortSelect.value = performanceSort;
     sortSelect.addEventListener("input", () => {
       performanceSort = sortSelect.value;
@@ -1228,7 +1240,21 @@
     });
     sortWrap.append(sortText, sortSelect);
 
-    controls.append(sortWrap, rangeControls());
+    const bossWrap = document.createElement("label");
+    bossWrap.className = "attendanceSortControl";
+    const bossText = document.createElement("span");
+    bossText.textContent = "Boss";
+    const bossSelect = document.createElement("select");
+    bossSelect.append(new Option("All bosses", "all"));
+    availablePerformanceBosses(records).forEach((boss) => bossSelect.append(new Option(boss, boss)));
+    bossSelect.value = performanceBossFilter;
+    bossSelect.addEventListener("input", () => {
+      performanceBossFilter = bossSelect.value;
+      render();
+    });
+    bossWrap.append(bossText, bossSelect);
+
+    controls.append(sortWrap, bossWrap, rangeControls());
     return controls;
   }
 
@@ -1274,7 +1300,7 @@
   function performanceHeaderRow() {
     const row = document.createElement("div");
     row.className = "performanceRow performanceHeader";
-    ["Player", "Att", "Med dmg/boss", "Med heal/boss", "Med taken/boss"].forEach((label) => {
+    ["Player", "Att", "Med dmg", "Med DPS", "Med heal", "Med HPS", "Med taken/s", "Med inst dmg"].forEach((label) => {
       const cell = document.createElement("span");
       cell.textContent = label;
       row.append(cell);
@@ -1302,9 +1328,15 @@
     }
     const heal = document.createElement("span");
     heal.textContent = player.hasEnoughPerformance ? (player.avgHealingDone ? formatNumber(player.avgHealingDone) : "-") : "-";
+    const dps = document.createElement("span");
+    dps.textContent = player.hasEnoughPerformance ? (player.avgDps ? formatNumber(player.avgDps) : "-") : "-";
+    const hps = document.createElement("span");
+    hps.textContent = player.hasEnoughPerformance ? (player.avgHps ? formatNumber(player.avgHps) : "-") : "-";
     const taken = document.createElement("span");
     taken.textContent = player.hasEnoughPerformance ? (player.avgDamageTaken ? formatNumber(player.avgDamageTaken) : "-") : "-";
-    row.append(nameCell, attendance, damage, heal, taken);
+    const instanceDamage = document.createElement("span");
+    instanceDamage.textContent = player.hasEnoughPerformance ? (player.avgInstanceDamage ? formatNumber(player.avgInstanceDamage) : "-") : "-";
+    row.append(nameCell, attendance, damage, dps, heal, hps, taken, instanceDamage);
     return row;
   }
 
@@ -1313,8 +1345,11 @@
       if (performanceSort === "name") return a.name.localeCompare(b.name);
       if (performanceSort === "attendance") return b.percent - a.percent || b.attended - a.attended || a.name.localeCompare(b.name);
       if (a.hasEnoughPerformance !== b.hasEnoughPerformance) return Number(b.hasEnoughPerformance) - Number(a.hasEnoughPerformance);
+      if (performanceSort === "dps") return b.avgDps - a.avgDps || b.avgDamageDone - a.avgDamageDone || a.name.localeCompare(b.name);
       if (performanceSort === "heal") return b.avgHealingDone - a.avgHealingDone || b.avgDamageDone - a.avgDamageDone || a.name.localeCompare(b.name);
+      if (performanceSort === "hps") return b.avgHps - a.avgHps || b.avgHealingDone - a.avgHealingDone || a.name.localeCompare(b.name);
       if (performanceSort === "taken") return b.avgDamageTaken - a.avgDamageTaken || b.avgDamageDone - a.avgDamageDone || a.name.localeCompare(b.name);
+      if (performanceSort === "instance") return b.avgInstanceDamage - a.avgInstanceDamage || b.avgDamageDone - a.avgDamageDone || a.name.localeCompare(b.name);
       return b.avgDamageDone - a.avgDamageDone || b.avgHealingDone - a.avgHealingDone || a.name.localeCompare(b.name);
     });
   }
