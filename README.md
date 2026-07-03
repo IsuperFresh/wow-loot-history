@@ -19,7 +19,7 @@ Run this from PowerShell:
 The script reads:
 
 ```text
-D:\Wow\World of Warcraft 3.3.5a\WTF\Account\ISUPERFRESH\SavedVariables\SoftResRoller.lua
+D:\wow-hd\world of warcraft 3.3.5a hd\WTF\Account\ISUPERFRESH\SavedVariables\SoftResRoller.lua
 ```
 
 and rewrites:

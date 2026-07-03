@@ -1,6 +1,6 @@
 param(
-  [string]$Source = "D:\Wow\World of Warcraft 3.3.5a\WTF\Account\ISUPERFRESH\SavedVariables\SoftResRoller.lua",
-  [string]$AddonData = "D:\Wow\World of Warcraft 3.3.5a\Interface\AddOns\SoftResRoller\SoftResRollerData.lua",
+  [string]$Source = "D:\wow-hd\world of warcraft 3.3.5a hd\WTF\Account\ISUPERFRESH\SavedVariables\SoftResRoller.lua",
+  [string]$AddonData = "D:\wow-hd\world of warcraft 3.3.5a hd\interface\addons\SoftResRoller\SoftResRollerData.lua",
   [switch]$RefreshAttendance
 )
 

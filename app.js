@@ -575,9 +575,9 @@
 
   function renderTypeFilter(values) {
     const current = selectedTypeValues();
-    const orderedValues = ["SR", "MS", "OS", "DE"]
+    const orderedValues = ["SR", "MS", "OS", "CL", "DE"]
       .filter((mode) => values.includes(mode))
-      .concat(values.filter((mode) => !["SR", "MS", "OS", "DE"].includes(mode)));
+      .concat(values.filter((mode) => !["SR", "MS", "OS", "CL", "DE"].includes(mode)));
     els.typeFilter.innerHTML = "";
     const all = typeChoice("ALL", "", current.length === 0);
     els.typeFilter.append(all);
@@ -1565,6 +1565,7 @@
   function displayMode(mode) {
     const raw = String(mode || "Other").trim();
     if (raw === "AUTO" || raw === "AUTO SR") return "SR";
+    if (raw === "SL") return "CL";
     return raw;
   }
 
@@ -1584,7 +1585,7 @@
   }
 
   function modeOrder(mode) {
-    return { MS: 1, SR: 2, OS: 3, DE: 4 }[mode] || 20;
+    return { MS: 1, SR: 2, OS: 3, CL: 4, DE: 5 }[mode] || 20;
   }
 
   function empty(message) {
