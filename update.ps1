@@ -220,6 +220,19 @@ function Get-RaidLogUrls {
   return $urls
 }
 
+
+function Get-RaidPhases {
+  param([string]$LuaText)
+  $phases = [ordered]@{}
+  $match = [regex]::Match($LuaText, '\["raidPhases"\]\s*=\s*\{(?<body>[\s\S]*?)\n\t\}', 'Singleline')
+  if (-not $match.Success) { return $phases }
+  foreach ($entry in [regex]::Matches($match.Groups["body"].Value, '\["(?<id>(?:\\.|[^"])*)"\]\s*=\s*"(?<phase>(?:\\.|[^"])*)"')) {
+    $id = ConvertFrom-LuaString $entry.Groups["id"].Value
+    $phase = ConvertFrom-LuaString $entry.Groups["phase"].Value
+    if ($id -and $phase) { $phases[$id] = $phase }
+  }
+  return $phases
+}
 function Read-UwuPerformanceFromHtml {
   param([string]$Html)
 
@@ -505,11 +518,12 @@ function Get-CachedOrFetchAttendance {
 
 $lua = [string](Get-Content -LiteralPath $Source -Raw)
 $raidLogUrls = Get-RaidLogUrls $lua
+$raidPhases = Get-RaidPhases $lua
 $attendance = @()
 foreach ($key in $raidLogUrls.Keys) {
   $url = [string]$raidLogUrls[$key]
   if (-not [string]::IsNullOrWhiteSpace($url)) {
-    $attendance += Get-CachedOrFetchAttendance -RaidId $key -Url $url -Message "attendance"
+    $attendance += Get-CachedOrFetchAttendance -RaidId $key -Url $url -Phase ([string]$raidPhases[$key]) -Message "attendance"
   }
 }
 
