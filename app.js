@@ -8,6 +8,8 @@
     raidSelect: document.getElementById("raidSelect"),
     winnerLabel: document.querySelector('label[for="winnerFilter"]'),
     winnerFilter: document.getElementById("winnerFilter"),
+    itemLabel: document.querySelector('label[for="itemFilter"]'),
+    itemFilter: document.getElementById("itemFilter"),
     typeFilter: document.getElementById("typeFilter"),
     viewTabs: document.querySelectorAll(".viewTab"),
     raidTitle: document.getElementById("raidTitle"),
@@ -27,6 +29,7 @@
   let attendanceBucket = "all";
   let attendanceRange = "all";
   let attendanceLimit = 5;
+  let attendanceRaidKind = "main";
   let performanceSort = "dps";
   let performanceBossFilter = "all";
   const PERFORMANCE_MIN_BOSSES = 20;
@@ -275,6 +278,7 @@
   }
 
   function normalize(db, defaultCsvText) {
+    const raidKindOverrides = db.raidKinds && typeof db.raidKinds === "object" ? db.raidKinds : {};
     const winners = ensureArray(db.winners).map((row, index) => {
       const item = plainItem(row.item || row.label || "");
       const mode = String(row.mode || "").trim() || "Other";
@@ -291,7 +295,8 @@
         spec: row.spec || "",
         rolls: row.rolls || "",
         total: row.total || "",
-        raidId: row.raidId || ""
+        raidId: row.raidId || "",
+        raidKind: normalizeRaidKind(row.raidKind || raidKindOverrides[row.raidId])
       };
     });
 
@@ -336,14 +341,17 @@
         id,
         title,
         phase: raid.phase || raidPhaseOverrides[id] || inferPhase(title),
+        raidKind: normalizeRaidKind(raid.raidKind || raidKindOverrides[id]),
         finalizedAt: raid.finalizedAt || "",
         winnerCount: raid.winnerCount || 0,
         lines: ensureArray(raid.lines)
       };
     });
     const raidPhaseMap = new Map(raids.map((raid) => [raid.id, raid.phase || ""]));
+    const raidKindMap = new Map(raids.map((raid) => [raid.id, raid.raidKind || "main"]));
     winners.forEach((row) => {
       row.phase = raidPhaseMap.get(row.raidId) || inferPhase(row.raidId);
+      row.raidKind = normalizeRaidKind(row.raidKind || raidKindMap.get(row.raidId) || raidKindOverrides[row.raidId]);
     });
 
     const itemSources = buildItemSources(allReserveRows);
@@ -527,7 +535,11 @@
   function renderRaidFilter() {
     const selectedPhase = els.phaseSelect.value;
     const raidOptions = isLogView() ? attendanceRaidOptions() : lootRaidOptions();
-    const filteredOptions = raidOptions.filter((raid) => !selectedPhase || raid.phase === selectedPhase);
+    const filteredOptions = raidOptions.filter((raid) => {
+      if (selectedPhase && raid.phase !== selectedPhase) return false;
+      if (activeView === "attendance" && raid.raidKind !== attendanceRaidKind) return false;
+      return true;
+    });
     fillSelect(els.raidSelect, "All raids", filteredOptions.map((raid) => ({ label: raid.title, value: raid.id })));
   }
 
@@ -554,6 +566,7 @@
           id: record.raidId,
           title: record.title || record.raidId,
           phase: record.phase || inferPhase(record.title || record.raidId),
+          raidKind: normalizeRaidKind(record.raidKind || raidKindForId(record.raidId)),
           url: record.url || ""
         });
       }
@@ -575,9 +588,9 @@
 
   function renderTypeFilter(values) {
     const current = selectedTypeValues();
-    const orderedValues = ["SR", "MS", "OS", "CL", "DE"]
+    const orderedValues = ["SR", "MS", "OS", "DE"]
       .filter((mode) => values.includes(mode))
-      .concat(values.filter((mode) => !["SR", "MS", "OS", "CL", "DE"].includes(mode)));
+      .concat(values.filter((mode) => !["SR", "MS", "OS", "DE"].includes(mode)));
     els.typeFilter.innerHTML = "";
     const all = typeChoice("ALL", "", current.length === 0);
     els.typeFilter.append(all);
@@ -614,12 +627,14 @@
     const selectedRaidId = els.raidSelect.value;
     const selectedTypes = selectedTypeValues();
     const winnerQuery = els.winnerFilter.value.trim().toLowerCase();
+    const itemQuery = (els.itemFilter?.value || "").trim().toLowerCase();
     const selectedRaid = (isLogView() ? attendanceRaidOptions() : lootRaidOptions()).find((raid) => raid.id === selectedRaidId);
     const rows = model.winners.filter((row) => {
       if (selectedPhase && row.phase !== selectedPhase) return false;
       if (selectedRaidId && row.raidId !== selectedRaidId) return false;
       if (selectedTypes.length && !selectedTypes.includes(displayMode(row.mode))) return false;
       if (winnerQuery && !String(row.winner).toLowerCase().includes(winnerQuery)) return false;
+      if (itemQuery && !lootItemSearchText(row).includes(itemQuery)) return false;
       return true;
     });
     const groups = buildLootGroups(rows);
@@ -628,15 +643,16 @@
       const allAttendanceRecords = model.attendance.filter((record) => {
         if (selectedPhase && record.phase !== selectedPhase) return false;
         if (selectedRaidId && record.raidId !== selectedRaidId) return false;
+        if (!selectedRaidId && record.raidKind !== attendanceRaidKind) return false;
         return true;
       }).sort(compareLogDateDesc);
       const attendanceRecords = selectedRaidId ? allAttendanceRecords : applyAttendanceRange(allAttendanceRecords);
-      const roster = attendanceRoster(selectedPhase);
+      const roster = attendanceRoster(selectedPhase, selectedRaidId ? "" : attendanceRaidKind);
       const marks = attendanceRecords.reduce((sum, record) => sum + record.players.length, 0);
       setSummaryLabels("Players", "Marks", "Raids");
       els.raidTitle.textContent = selectedRaid
         ? `${selectedRaid.title} attendance`
-        : selectedPhase ? `${phaseLabel(selectedPhase)} attendance` : "Attendance";
+        : `${selectedPhase ? `${phaseLabel(selectedPhase)} ${raidKindLabel(attendanceRaidKind)}` : raidKindLabel(attendanceRaidKind)} attendance`;
       els.statPlayers.textContent = roster.length;
       els.statItems.textContent = marks;
       els.statRaids.textContent = attendanceRecords.length;
@@ -678,6 +694,16 @@
   function syncSearchControl() {
     if (els.winnerLabel) els.winnerLabel.textContent = isLogView() ? "Player" : "Winner";
     els.winnerFilter.placeholder = isLogView() ? "All players" : "All winners";
+    if (els.itemFilter) {
+      const hidden = isLogView();
+      els.itemFilter.closest(".field")?.classList.toggle("isHidden", hidden);
+      if (els.itemLabel) els.itemLabel.textContent = "Item";
+      els.itemFilter.placeholder = "All items";
+    }
+  }
+
+  function isLogView() {
+    return activeView === "attendance" || activeView === "performance";
   }
 
   function setSummaryLabels(players, items, raids) {
@@ -686,8 +712,40 @@
     if (els.statRaidsLabel) els.statRaidsLabel.textContent = raids;
   }
 
-  function isLogView() {
-    return activeView === "attendance" || activeView === "performance";
+  function lootItemSearchText(row) {
+    return [row.item, row.itemId, row.slot, row.source].map((value) => String(value || "").toLowerCase()).join(" ");
+  }
+
+  function normalizeRaidKind(value) {
+    return String(value || "").toLowerCase() === "other" ? "other" : "main";
+  }
+
+  function raidKindLabel(kind) {
+    return normalizeRaidKind(kind) === "other" ? "Others" : "Main";
+  }
+
+  function raidKindForId(raidId) {
+    const id = String(raidId || "");
+    const raid = model.raids.find((item) => item.id === id);
+    if (raid) return normalizeRaidKind(raid.raidKind);
+    const winner = model.winners.find((item) => item.raidId === id && item.raidKind);
+    return normalizeRaidKind(winner?.raidKind);
+  }
+
+  function attendanceKindMatch(record, kind = attendanceRaidKind) {
+    return normalizeRaidKind(record.raidKind) === normalizeRaidKind(kind);
+  }
+
+  function applyAttendanceRange(records) {
+    if (attendanceRange !== "last") return records;
+    attendanceLimit = clampAttendanceLimit(attendanceLimit);
+    return records.slice(0, attendanceLimit);
+  }
+
+  function clampAttendanceLimit(value) {
+    const limit = Number.parseInt(value, 10);
+    if (!Number.isFinite(limit)) return 1;
+    return Math.min(99, Math.max(1, limit));
   }
 
   function buildLootGroups(lootRows) {
@@ -732,6 +790,7 @@
           raidId: record.raidId || "",
           title,
           phase: record.phase || raidPhase(record.raidId) || inferPhase(title),
+          raidKind: normalizeRaidKind(record.raidKind || raidKindForId(record.raidId)),
           source: record.source || "addon",
           url: record.url || "",
           fetchedAt: record.fetchedAt || "",
@@ -823,14 +882,16 @@
     return Number.isFinite(number) ? number : 0;
   }
 
-  function attendanceRoster(selectedPhase = "") {
+  function attendanceRoster(selectedPhase = "", raidKind = "") {
     const names = [];
     model.winners.forEach((row) => {
       if (selectedPhase && row.phase !== selectedPhase) return;
+      if (raidKind && row.raidKind !== raidKind) return;
       if (row.winner && !isDisenchantName(row.winner)) names.push(row.winner);
     });
     model.attendance.forEach((record) => {
       if (selectedPhase && record.phase !== selectedPhase) return;
+      if (raidKind && !attendanceKindMatch(record, raidKind)) return;
       record.players.forEach((name) => names.push(name));
     });
     return unique(names).sort((a, b) => a.localeCompare(b));
@@ -882,9 +943,11 @@
     const table = document.createElement("div");
     table.className = "performanceTable";
     table.append(performanceHeaderRow());
-    sortPerformanceRows(players).forEach((player) => table.append(performanceRow(player)));
-    if (table.children.length === 1) {
+    const visiblePlayers = sortPerformanceRows(players);
+    if (!visiblePlayers.length) {
       table.append(empty("No players match this search."));
+    } else {
+      visiblePlayers.forEach((player) => table.append(performanceRow(player)));
     }
 
     card.append(header, performanceControls(bossOptionRecords), table);
@@ -912,6 +975,7 @@
     const isBossFiltered = bossFilter !== "all";
     const totalCount = isBossFiltered ? bossEntries.length : records.length;
     const map = new Map();
+    const query = normalizeName(playerQuery);
     const get = (name) => {
       const key = normalizeName(name);
       if (!map.has(key)) {
@@ -936,15 +1000,13 @@
     if (isBossFiltered) {
       bossEntries.forEach(({ boss }) => {
         boss.players.forEach((name) => {
-          if (!playerQuery || normalizeName(name).includes(normalizeName(playerQuery))) get(name).attended += 1;
+          if (!query || normalizeName(name).includes(query)) get(name).attended += 1;
         });
       });
     } else {
       records.forEach((record) => {
-        const present = new Set(record.players.map(normalizeName));
-        present.forEach((key) => {
-          const name = record.players.find((player) => normalizeName(player) === key) || key;
-          if (!playerQuery || normalizeName(name).includes(normalizeName(playerQuery))) get(name).attended += 1;
+        record.players.forEach((name) => {
+          if (!query || normalizeName(name).includes(query)) get(name).attended += 1;
         });
       });
     }
@@ -952,7 +1014,7 @@
     records.forEach((record) => {
       const present = new Set(record.players.map(normalizeName));
       record.performance.forEach((metric) => {
-        if (playerQuery && !normalizeName(metric.name).includes(normalizeName(playerQuery))) return;
+        if (query && !normalizeName(metric.name).includes(query)) return;
         if (!present.has(normalizeName(metric.name))) return;
         if (isBossFiltered && !playerWasOnBossInRecord(record, metric.name, bossFilter)) return;
         const row = get(metric.name);
@@ -963,7 +1025,7 @@
     bossEntries.forEach(({ boss }) => {
       const present = new Set(boss.players.map(normalizeName));
       boss.performance.forEach((metric) => {
-        if (playerQuery && !normalizeName(metric.name).includes(normalizeName(playerQuery))) return;
+        if (query && !normalizeName(metric.name).includes(query)) return;
         if (!present.has(normalizeName(metric.name))) return;
         const row = get(metric.name);
         const hasMetric = metric.dps || metric.hps || metric.damageTakenPerSecond || metric.damageTaken;
@@ -1020,7 +1082,7 @@
     const header = document.createElement("div");
     header.className = "lootCardHeader";
     const title = document.createElement("h3");
-    title.textContent = "All raids attendance";
+    title.textContent = `${raidKindLabel(attendanceRaidKind)} raids attendance`;
     const stats = document.createElement("div");
     stats.className = "lootCardStats";
     const count = document.createElement("strong");
@@ -1069,7 +1131,7 @@
     title.textContent = titleText;
     const meta = document.createElement("p");
     meta.className = "attendanceMeta";
-    meta.textContent = record.error ? `Log error: ${record.error}` : `Fetched ${record.fetchedAt || "-"}`;
+    meta.textContent = record.error ? `Log error: ${record.error}` : `${raidKindLabel(record.raidKind)} raid - Fetched ${record.fetchedAt || "-"}`;
     titleWrap.append(title, meta);
 
     const stats = document.createElement("div");
@@ -1143,6 +1205,59 @@
     });
     sortWrap.append(sortText, sortSelect);
 
+    const rangeWrap = document.createElement("div");
+    rangeWrap.className = "attendanceRangeControl";
+    const rangeText = document.createElement("span");
+    rangeText.textContent = "Range";
+    const allRange = document.createElement("button");
+    allRange.type = "button";
+    allRange.className = "attendanceRangeButton";
+    allRange.classList.toggle("active", attendanceRange === "all");
+    allRange.textContent = "All";
+    allRange.addEventListener("click", () => {
+      attendanceRange = "all";
+      render();
+    });
+    const lastRange = document.createElement("button");
+    lastRange.type = "button";
+    lastRange.className = "attendanceRangeButton";
+    lastRange.classList.toggle("active", attendanceRange === "last");
+    lastRange.textContent = "Last";
+    lastRange.addEventListener("click", () => {
+      attendanceRange = "last";
+      render();
+    });
+    const limitInput = document.createElement("input");
+    limitInput.type = "number";
+    limitInput.min = "1";
+    limitInput.max = "99";
+    limitInput.step = "1";
+    limitInput.value = String(attendanceLimit);
+    limitInput.title = "Number of latest raids";
+    limitInput.addEventListener("input", () => {
+      attendanceRange = "last";
+      attendanceLimit = clampAttendanceLimit(limitInput.value);
+      render();
+    });
+    rangeWrap.append(rangeText, allRange, lastRange, limitInput);
+
+    const raidKinds = document.createElement("div");
+    raidKinds.className = "attendanceKindFilters";
+    [["main", "Main"], ["other", "Others"]].forEach(([kind, label]) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "attendanceKind";
+      button.classList.toggle("active", attendanceRaidKind === kind);
+      button.textContent = label;
+      button.addEventListener("click", () => {
+        attendanceRaidKind = kind;
+        els.raidSelect.value = "";
+        renderRaidFilter();
+        render();
+      });
+      raidKinds.append(button);
+    });
+
     const buckets = document.createElement("div");
     buckets.className = "attendanceBucketFilters";
     ["all", "full", "partial", "low", "missing"].forEach((bucket) => {
@@ -1158,7 +1273,7 @@
       buckets.append(button);
     });
 
-    controls.append(sortWrap, rangeControls(), buckets);
+    controls.append(raidKinds, sortWrap, rangeWrap, buckets);
     return controls;
   }
 
@@ -1210,41 +1325,42 @@
   }
 
   function rangeControls() {
-    const wrap = document.createElement("div");
-    wrap.className = "attendanceRangeControl";
-    const all = rangeButton("All time", "all");
-    const last = rangeButton("Last", "last");
-    const input = document.createElement("input");
-    input.type = "number";
-    input.min = "1";
-    input.max = "999";
-    input.value = String(attendanceLimit);
-    input.addEventListener("input", () => {
-      const value = Math.max(1, Math.min(999, Number(input.value) || 1));
-      attendanceLimit = value;
+    const rangeWrap = document.createElement("div");
+    rangeWrap.className = "attendanceRangeControl";
+    const rangeText = document.createElement("span");
+    rangeText.textContent = "Range";
+    const allRange = document.createElement("button");
+    allRange.type = "button";
+    allRange.className = "attendanceRangeButton";
+    allRange.classList.toggle("active", attendanceRange === "all");
+    allRange.textContent = "All";
+    allRange.addEventListener("click", () => {
+      attendanceRange = "all";
+      render();
+    });
+    const lastRange = document.createElement("button");
+    lastRange.type = "button";
+    lastRange.className = "attendanceRangeButton";
+    lastRange.classList.toggle("active", attendanceRange === "last");
+    lastRange.textContent = "Last";
+    lastRange.addEventListener("click", () => {
       attendanceRange = "last";
       render();
     });
-    wrap.append(all, last, input);
-    return wrap;
-  }
-
-  function rangeButton(label, value) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "attendanceRangeButton";
-    button.classList.toggle("active", attendanceRange === value);
-    button.textContent = label;
-    button.addEventListener("click", () => {
-      attendanceRange = value;
+    const limitInput = document.createElement("input");
+    limitInput.type = "number";
+    limitInput.min = "1";
+    limitInput.max = "99";
+    limitInput.step = "1";
+    limitInput.value = String(attendanceLimit);
+    limitInput.title = "Number of latest raids";
+    limitInput.addEventListener("input", () => {
+      attendanceRange = "last";
+      attendanceLimit = clampAttendanceLimit(limitInput.value);
       render();
     });
-    return button;
-  }
-
-  function applyAttendanceRange(records) {
-    if (attendanceRange !== "last") return records;
-    return records.slice(0, Math.max(1, attendanceLimit));
+    rangeWrap.append(rangeText, allRange, lastRange, limitInput);
+    return rangeWrap;
   }
 
   function performanceHeaderRow() {
@@ -1565,7 +1681,6 @@
   function displayMode(mode) {
     const raw = String(mode || "Other").trim();
     if (raw === "AUTO" || raw === "AUTO SR") return "SR";
-    if (raw === "SL") return "CL";
     return raw;
   }
 
@@ -1585,7 +1700,7 @@
   }
 
   function modeOrder(mode) {
-    return { MS: 1, SR: 2, OS: 3, CL: 4, DE: 5 }[mode] || 20;
+    return { MS: 1, SR: 2, OS: 3, DE: 4 }[mode] || 20;
   }
 
   function empty(message) {
@@ -1599,7 +1714,7 @@
     renderRaidFilter();
     render();
   });
-  [els.raidSelect, els.winnerFilter].forEach((control) => control.addEventListener("input", render));
+  [els.raidSelect, els.winnerFilter, els.itemFilter].filter(Boolean).forEach((control) => control.addEventListener("input", render));
   els.typeFilter.addEventListener("change", (event) => {
     const input = event.target.closest('input[type="checkbox"]');
     if (!input) return;

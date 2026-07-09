@@ -966,3 +966,30 @@ a.itemName:hover {
     grid-template-columns: 1fr;
   }
 }
+
+.field.isHidden {
+  display: none;
+}
+
+.attendanceKindFilters {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.attendanceKind {
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 4px;
+  color: var(--muted);
+  background: #090806;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.attendanceKind.active {
+  border-color: var(--gold);
+  color: var(--gold);
+  background: rgba(255, 224, 27, 0.12);
+}
