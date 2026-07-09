@@ -469,10 +469,34 @@
     if (!value) return "";
     if (value.includes("ulduar")) return "phase2";
     if (value.includes("naxx") || value.includes("obsidian") || value.includes("eye of eternity") || /\beoe\b/.test(value) || /\bos\b/.test(value)) return "phase1";
-    if (value.includes("trial") || /\btoc\b/.test(value) || value.includes("onyxia")) return "phase3";
+    if (value.includes("trial") || value.includes("crusader") || /\btoc\b/.test(value) || value.includes("onyxia") || value.includes("northrend beasts") || value.includes("jaraxxus") || value.includes("faction champions") || value.includes("val'kyr") || value.includes("valkyr") || value.includes("anub'arak")) return "phase3";
     if (value.includes("icecrown") || /\bicc\b/.test(value)) return "phase4";
     if (value.includes("ruby") || /\brs\b/.test(value)) return "phase5";
     return "";
+  }
+
+  function attendancePhaseText(record, title = "") {
+    const bossText = ensureArray(record && record.bosses)
+      .map((boss) => boss && typeof boss === "object" ? boss.name : "")
+      .filter(Boolean)
+      .join(" ");
+    return [record && record.title, title, record && record.url, bossText].filter(Boolean).join(" ");
+  }
+
+  function attendanceTitle(record) {
+    const explicitTitle = String(record && record.title || "").trim();
+    if (explicitTitle) return explicitTitle;
+    const text = attendancePhaseText(record);
+    const phase = inferPhase(text);
+    const date = String(record && (record.fetchedAt || record.raidId) || "").slice(0, 10);
+    const suffix = date ? " " + date : "";
+    const lower = normalizeName(text);
+    if (phase === "phase3") return lower.includes("onyxia") ? "Onyxia" + suffix : "ToC" + suffix;
+    if (phase === "phase2") return "Ulduar" + suffix;
+    if (phase === "phase1") return "Phase 1" + suffix;
+    if (phase === "phase4") return "ICC" + suffix;
+    if (phase === "phase5") return "Ruby Sanctum" + suffix;
+    return raidTitle(record && record.raidId) || record && record.raidId || record && record.url || "Raid";
   }
 
   function raidTitle(raidId) {
@@ -785,11 +809,12 @@
   function normalizeAttendance(rows) {
     return ensureArray(rows)
       .map((record) => {
-        const title = record.title || raidTitle(record.raidId) || record.raidId || "";
+        const title = attendanceTitle(record);
+        const inferredPhase = inferPhase(attendancePhaseText(record, title));
         return {
           raidId: record.raidId || "",
           title,
-          phase: record.phase || raidPhase(record.raidId) || inferPhase(title),
+          phase: record.phase || inferredPhase || raidPhase(record.raidId),
           raidKind: normalizeRaidKind(record.raidKind || raidKindForId(record.raidId)),
           source: record.source || "addon",
           url: record.url || "",
