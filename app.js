@@ -1,4 +1,4 @@
-(function () {
+﻿(function () {
   "use strict";
 
   const els = {
@@ -528,18 +528,55 @@
     return bracketMatch ? bracketMatch[1] : text;
   }
 
+  function mergeRows(existing, incoming, keyFn) {
+    const out = [];
+    const seen = new Set();
+    [...ensureArray(existing), ...ensureArray(incoming)].forEach((row) => {
+      const key = keyFn(row || {});
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      out.push(row);
+    });
+    return out;
+  }
+
+  function winnerArchiveKey(row) {
+    return [row.raidId || "", row.date || "", row.time || "", row.mode || "", row.winner || "", row.itemId || "", row.item || row.label || "", row.total || "", row.rolls || ""].join("|");
+  }
+
+  function raidArchiveKey(row) {
+    return row.id || row.finalizedAt || row.title || JSON.stringify(row || {});
+  }
+
+  function attendanceArchiveKey(row) {
+    return [row.raidId || "", row.url || "", row.source || ""].join("|");
+  }
+
+  function mergeArchiveIntoDb(db, archive) {
+    if (!archive || typeof archive !== "object") return db;
+    db.winners = mergeRows(archive.winners, db.winners, winnerArchiveKey);
+    db.raidSnapshots = mergeRows(archive.raidSnapshots, db.raidSnapshots, raidArchiveKey);
+    db.raidKinds = { ...(archive.raidKinds || {}), ...(db.raidKinds || {}) };
+    db.raidPhases = { ...(archive.raidPhases || {}), ...(db.raidPhases || {}) };
+    db.raidLogUrls = { ...(archive.raidLogUrls || {}), ...(db.raidLogUrls || {}) };
+    return db;
+  }
+
+  function mergeArchiveAttendance(attendanceRows, archive) {
+    return mergeRows(archive?.attendance || [], attendanceRows, attendanceArchiveKey);
+  }
   function setStatus(message) {
     els.status.hidden = !message;
     els.status.textContent = message || "";
   }
 
-  function loadLua(luaText, meta, defaultCsvText = "", attendanceRows = []) {
+  function loadLua(luaText, meta, defaultCsvText = "", attendanceRows = [], archive = null) {
     try {
       setStatus("");
-      rawDb = new LuaParser(luaText).parse();
+      rawDb = mergeArchiveIntoDb(new LuaParser(luaText).parse(), archive);
       extraCsvText = defaultCsvText || "";
       model = normalize(rawDb, extraCsvText);
-      model.attendance = normalizeAttendance(attendanceRows);
+      model.attendance = normalizeAttendance(mergeArchiveAttendance(attendanceRows, archive));
       mergeAttendancePlayerInfo(model.attendance);
       renderFilters();
       render();
@@ -1772,9 +1809,10 @@
   const payload = window.SOFTRES_PAYLOAD;
   const payloadLua = typeof payload?.lua === "string" ? payload.lua : payload?.lua?.value;
   if (payload && payloadLua) {
-    loadLua(payloadLua, "Guild raid loot history", payload.defaultCsv || "", payload.attendance || []);
+    loadLua(payloadLua, "Guild raid loot history", payload.defaultCsv || "", payload.attendance || [], payload.archive || null);
   } else {
     setStatus("No generated data found. Run update-site.bat to rebuild assets/data.js.");
     els.sourceMeta.textContent = "Waiting for SoftResRoller.lua";
   }
 })();
+

@@ -1,4 +1,4 @@
-param(
+﻿param(
   [string]$Source = "D:\wow-hd\world of warcraft 3.3.5a hd\WTF\Account\ISUPERFRESH\SavedVariables\SoftResRoller.lua",
   [string]$AddonData = "D:\wow-hd\world of warcraft 3.3.5a hd\interface\addons\SoftResRoller\SoftResRollerData.lua",
   [switch]$RefreshAttendance
@@ -545,6 +545,28 @@ if ($script:attendanceCacheChanged -or $RefreshAttendance) {
   Write-Host "Updated attendance cache: $script:attendanceCachePath"
 }
 
+
+$archivePath = Join-Path $assetsDir "loot-archive.json"
+$archiveTool = Join-Path $PSScriptRoot "archive-softres.js"
+$archive = $null
+if (Test-Path -LiteralPath $archiveTool) {
+  $attendanceTemp = Join-Path ([System.IO.Path]::GetTempPath()) ("softres-attendance-" + [Guid]::NewGuid().ToString("N") + ".json")
+  try {
+    $attendance | ConvertTo-Json -Depth 12 -Compress | Set-Content -LiteralPath $attendanceTemp -Encoding UTF8
+    & node $archiveTool $Source $archivePath $attendanceTemp
+    if ($LASTEXITCODE -ne 0) { throw "archive-softres.js failed with exit code $LASTEXITCODE" }
+    if (Test-Path -LiteralPath $archivePath) {
+      $archiveText = [string](Get-Content -LiteralPath $archivePath -Raw)
+      if (-not [string]::IsNullOrWhiteSpace($archiveText)) {
+        $archive = $archiveText | ConvertFrom-Json
+      }
+    }
+  } finally {
+    if (Test-Path -LiteralPath $attendanceTemp) { Remove-Item -LiteralPath $attendanceTemp -Force }
+  }
+} else {
+  Write-Warning "Archive helper not found: $archiveTool"
+}
 $defaultCsv = ""
 if (Test-Path -LiteralPath $AddonData) {
   $addonText = [string](Get-Content -LiteralPath $AddonData -Raw)
@@ -559,6 +581,7 @@ $payload = [ordered]@{
   addonData = $AddonData
   defaultCsv = $defaultCsv
   attendance = $attendance
+  archive = $archive
   lua = $lua
 }
 
@@ -567,3 +590,4 @@ $target = Join-Path $assetsDir "data.js"
 Set-Content -LiteralPath $target -Value "window.SOFTRES_PAYLOAD = $json;" -Encoding UTF8
 
 Write-Host "Updated $target"
+

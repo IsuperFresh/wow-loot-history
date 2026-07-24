@@ -17,10 +17,12 @@ if errorlevel 1 (
 
 echo.
 echo Done.
-echo Updated file:
+echo Updated files:
 echo %~dp0assets\data.js
+echo %~dp0assets\app.js
+echo %~dp0assets\loot-archive.json
 echo.
-echo Upload/replace assets\data.js on GitHub, then wait 1-2 minutes and press Ctrl+F5 on the site.
+echo Upload/replace assets\data.js, assets\app.js, and assets\loot-archive.json on GitHub.
 echo.
 start "" "%~dp0assets"
 pause
