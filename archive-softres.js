@@ -1,4 +1,4 @@
-﻿"use strict";
+"use strict";
 
 const fs = require("fs");
 
@@ -114,7 +114,7 @@ function ensureArray(value) {
 function plainObject(value) { return value && typeof value === "object" && !Array.isArray(value) ? value : {}; }
 function winnerKey(row) { return [row.raidId || "", row.date || "", row.time || "", row.mode || "", row.winner || "", row.itemId || "", row.item || row.label || "", row.total || "", row.rolls || ""].join("|"); }
 function raidKey(row) { return row.id || row.finalizedAt || row.title || JSON.stringify(row); }
-function attendanceKey(row) { return [row.raidId || "", row.url || "", row.source || ""].join("|"); }
+function attendanceKey(row) { return row.url ? [row.url || "", row.source || ""].join("|") : [row.raidId || "", row.source || ""].join("|"); }
 function mergeArray(existing, incoming, keyFn) {
   const out = [];
   const seen = new Set();
@@ -128,21 +128,76 @@ function mergeArray(existing, incoming, keyFn) {
 }
 function mergeMap(existing, incoming) { return { ...plainObject(existing), ...plainObject(incoming) }; }
 function loadJson(path) { if (!path || !fs.existsSync(path)) return {}; const text = fs.readFileSync(path, "utf8").trim(); return text ? JSON.parse(text) : {}; }
+function datePart(value) { const text = String(value || ""); return /^\d{4}-\d{2}-\d{2}/.test(text) ? text.slice(0, 10) : ""; }
+function activeRaidDate(db) { return datePart(db && db.activeRaidId); }
+function normalizeRowsForActiveRaid(rows, db) {
+  const activeId = String(db && db.activeRaidId || "");
+  const activeDate = activeRaidDate(db);
+  if (!activeId || !activeDate) return ensureArray(rows);
+  return ensureArray(rows).map((row) => {
+    if (!row || typeof row !== "object") return row;
+    const rowDate = datePart(row.date || row.fetchedAt || row.raidId);
+    if (rowDate !== activeDate) return row;
+    if (row.raidId === activeId) return row;
+    return { ...row, raidId: activeId };
+  });
+}
+function snapshotDateForId(id, winners, attendance) {
+  const fromId = datePart(id);
+  if (fromId) return fromId;
+  const winner = winners.find((row) => row && row.raidId === id && datePart(row.date));
+  if (winner) return datePart(winner.date);
+  const record = attendance.find((row) => row && row.raidId === id && datePart(row.fetchedAt));
+  return record ? datePart(record.fetchedAt) : "";
+}
+function synthesizeRaidSnapshots(existing, winners, attendance, db) {
+  const out = [];
+  const map = new Map();
+  for (const raid of ensureArray(existing)) {
+    if (!raid || typeof raid !== "object") continue;
+    const id = String(raid.id || raid.finalizedAt || "");
+    if (!id || map.has(id)) continue;
+    map.set(id, raid);
+    out.push(raid);
+  }
+  const ids = new Set();
+  for (const row of winners) if (row && row.raidId) ids.add(String(row.raidId));
+  for (const row of attendance) if (row && row.raidId) ids.add(String(row.raidId));
+  for (const id of ids) {
+    if (map.has(id)) continue;
+    const date = snapshotDateForId(id, winners, attendance);
+    const raid = {
+      id,
+      title: date ? `Raid ${date}` : id,
+      phase: plainObject(db.raidPhases)[id] || "",
+      raidKind: plainObject(db.raidKinds)[id] || "main",
+      finalizedAt: id,
+      winnerCount: winners.filter((row) => row && row.raidId === id).length,
+      lines: []
+    };
+    map.set(id, raid);
+    out.push(raid);
+  }
+  return out;
+}
 
 const [, , luaPath, archivePath, attendancePath] = process.argv;
 if (!luaPath || !archivePath) throw new Error("Usage: node archive-softres.js <SoftResRoller.lua> <loot-archive.json> [attendance.json]");
 const db = new LuaParser(fs.readFileSync(luaPath, "utf8")).parse();
 const archive = loadJson(archivePath);
 const attendance = attendancePath ? loadJson(attendancePath) : [];
+const mergedWinners = mergeArray(normalizeRowsForActiveRaid(archive.winners, db), normalizeRowsForActiveRaid(db.winners, db), winnerKey);
+const mergedAttendance = mergeArray(normalizeRowsForActiveRaid(archive.attendance, db), normalizeRowsForActiveRaid(attendance, db), attendanceKey);
+const mergedRaidSnapshots = synthesizeRaidSnapshots(mergeArray(archive.raidSnapshots, db.raidSnapshots, raidKey), mergedWinners, mergedAttendance, db);
 const next = {
   version: 1,
   updatedAt: new Date().toISOString(),
-  winners: mergeArray(archive.winners, db.winners, winnerKey),
-  raidSnapshots: mergeArray(archive.raidSnapshots, db.raidSnapshots, raidKey),
+  winners: mergedWinners,
+  raidSnapshots: mergedRaidSnapshots,
   raidKinds: mergeMap(archive.raidKinds, db.raidKinds),
   raidPhases: mergeMap(archive.raidPhases, db.raidPhases),
   raidLogUrls: mergeMap(archive.raidLogUrls, db.raidLogUrls),
-  attendance: mergeArray(archive.attendance, attendance, attendanceKey)
+  attendance: mergedAttendance
 };
 fs.writeFileSync(archivePath, JSON.stringify(next), "utf8");
 console.log(`Updated archive: ${archivePath}`);

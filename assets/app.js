@@ -1,4 +1,4 @@
-﻿(function () {
+(function () {
   "use strict";
 
   const els = {
@@ -334,6 +334,11 @@
     }));
 
     const raidPhaseOverrides = db.raidPhases && typeof db.raidPhases === "object" ? db.raidPhases : {};
+    const winnerCountsByRaid = winners.reduce((map, row) => {
+      if (!row.raidId) return map;
+      map.set(row.raidId, (map.get(row.raidId) || 0) + 1);
+      return map;
+    }, new Map());
     const raids = ensureArray(db.raidSnapshots).map((raid, index) => {
       const id = raid.id || String(index + 1);
       const title = raid.title || `Raid ${index + 1}`;
@@ -343,9 +348,26 @@
         phase: raid.phase || raidPhaseOverrides[id] || inferPhase(title),
         raidKind: normalizeRaidKind(raid.raidKind || raidKindOverrides[id]),
         finalizedAt: raid.finalizedAt || "",
-        winnerCount: raid.winnerCount || 0,
+        winnerCount: raid.winnerCount || winnerCountsByRaid.get(id) || 0,
         lines: ensureArray(raid.lines)
       };
+    });
+    const raidIds = new Set(raids.map((raid) => raid.id));
+    winnerCountsByRaid.forEach((winnerCount, id) => {
+      if (raidIds.has(id)) return;
+      const firstWinner = winners.find((row) => row.raidId === id);
+      const date = firstWinner?.date || String(id).slice(0, 10);
+      const title = date ? `Raid ${date}` : id;
+      raids.push({
+        id,
+        title,
+        phase: raidPhaseOverrides[id] || inferPhase(title),
+        raidKind: normalizeRaidKind(raidKindOverrides[id]),
+        finalizedAt: id,
+        winnerCount,
+        lines: []
+      });
+      raidIds.add(id);
     });
     const raidPhaseMap = new Map(raids.map((raid) => [raid.id, raid.phase || ""]));
     const raidKindMap = new Map(raids.map((raid) => [raid.id, raid.raidKind || "main"]));
@@ -549,7 +571,8 @@
   }
 
   function attendanceArchiveKey(row) {
-    return [row.raidId || "", row.url || "", row.source || ""].join("|");
+    if (row.url) return [row.url || "", row.source || ""].join("|");
+    return [row.raidId || "", row.source || ""].join("|");
   }
 
   function mergeArchiveIntoDb(db, archive) {
