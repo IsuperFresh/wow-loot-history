@@ -553,13 +553,30 @@ if (Test-Path -LiteralPath $archiveTool) {
   $attendanceTemp = Join-Path ([System.IO.Path]::GetTempPath()) ("softres-attendance-" + [Guid]::NewGuid().ToString("N") + ".json")
   try {
     $attendance | ConvertTo-Json -Depth 12 -Compress | Set-Content -LiteralPath $attendanceTemp -Encoding UTF8
-    & node $archiveTool $Source $archivePath $attendanceTemp
-    if ($LASTEXITCODE -ne 0) { throw "archive-softres.js failed with exit code $LASTEXITCODE" }
-    if (Test-Path -LiteralPath $archivePath) {
-      $archiveText = [string](Get-Content -LiteralPath $archivePath -Raw)
-      if (-not [string]::IsNullOrWhiteSpace($archiveText)) {
-        $archive = $archiveText | ConvertFrom-Json
+    $env:AOL_ARCHIVE_STDOUT = "1"
+    $archiveText = & node $archiveTool $Source $archivePath $attendanceTemp
+    $nodeExitCode = $LASTEXITCODE
+    Remove-Item Env:\AOL_ARCHIVE_STDOUT -ErrorAction SilentlyContinue
+    if ($nodeExitCode -ne 0) { throw "archive-softres.js failed with exit code $nodeExitCode" }
+    if (-not [string]::IsNullOrWhiteSpace($archiveText)) {
+      $archiveTemp = Join-Path ([System.IO.Path]::GetTempPath()) ("loot-archive-" + [Guid]::NewGuid().ToString("N") + ".tmp")
+      [System.IO.File]::WriteAllText($archiveTemp, [string]$archiveText, [System.Text.UTF8Encoding]::new($false))
+      $archiveMoved = $false
+      for ($attempt = 1; $attempt -le 20 -and -not $archiveMoved; $attempt++) {
+        try {
+          Start-Sleep -Milliseconds 250
+          Move-Item -LiteralPath $archiveTemp -Destination $archivePath -Force
+          $archiveMoved = $true
+        } catch {
+          if ($attempt -ge 20) { throw }
+        }
       }
+      Write-Host "Updated archive: $archivePath"
+      $archive = $archiveText | ConvertFrom-Json
+      $archiveWinners = @($archive.winners).Count
+      $archiveRaids = @($archive.raidSnapshots).Count
+      $archiveAttendance = @($archive.attendance).Count
+      Write-Host "Archive winners: $archiveWinners, raids: $archiveRaids, attendance: $archiveAttendance"
     }
   } finally {
     if (Test-Path -LiteralPath $attendanceTemp) { Remove-Item -LiteralPath $attendanceTemp -Force }
@@ -590,4 +607,11 @@ $target = Join-Path $assetsDir "data.js"
 Set-Content -LiteralPath $target -Value "window.SOFTRES_PAYLOAD = $json;" -Encoding UTF8
 
 Write-Host "Updated $target"
+
+
+
+
+
+
+
 

@@ -1,6 +1,32 @@
-"use strict";
+﻿"use strict";
 
 const fs = require("fs");
+const path = require("path");
+const { spawnSync } = require("child_process");
+
+function writeFileAtomic(targetPath, content) {
+  const dir = path.dirname(targetPath);
+  const base = path.basename(targetPath);
+  const tmp = path.join(dir, `${base}.${process.pid}.tmp`);
+  try {
+    fs.writeFileSync(tmp, content, "utf8");
+    fs.renameSync(tmp, targetPath);
+    return;
+  } catch (error) {
+    try { if (fs.existsSync(tmp)) fs.unlinkSync(tmp); } catch (_) {}
+    if (error && error.code !== "EPERM" && error.code !== "EACCES") throw error;
+  }
+
+  const quotedPath = targetPath.replace(/'/g, "''");
+  const command = `$target = '${quotedPath}'; $tmp = "$target.ps-tmp"; [System.IO.File]::WriteAllText($tmp, [Console]::In.ReadToEnd(), [System.Text.UTF8Encoding]::new($false)); Move-Item -LiteralPath $tmp -Destination $target -Force`;
+  const result = spawnSync("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", command], {
+    input: content,
+    encoding: "utf8"
+  });
+  if (result.status !== 0) {
+    throw new Error(`PowerShell write fallback failed: ${result.stderr || result.stdout}`);
+  }
+}
 
 class LuaParser {
   constructor(input) { this.input = input; this.pos = 0; }
@@ -142,6 +168,8 @@ function normalizeRowsForActiveRaid(rows, db) {
     return { ...row, raidId: activeId };
   });
 }
+function inferPhase(text) { const value = String(text || "").trim().toLowerCase(); if (!value) return ""; if (value.includes("ulduar")) return "phase2"; if (value.includes("naxx") || value.includes("obsidian") || value.includes("eye of eternity") || /\beoe\b/.test(value) || /\bos\b/.test(value)) return "phase1"; if (value.includes("trial") || value.includes("crusader") || /\btoc\b/.test(value) || value.includes("onyxia") || value.includes("northrend beasts") || value.includes("jaraxxus") || value.includes("faction champions") || value.includes("valkyr") || value.includes("val\'kyr") || value.includes("anub\'arak")) return "phase3"; if (value.includes("icecrown") || /\bicc\b/.test(value)) return "phase4"; if (value.includes("ruby") || /\brs\b/.test(value)) return "phase5"; return ""; }
+function inferSnapshotPhase(id, winners, attendance, db) { const maps = [plainObject(db.raidPhases), plainObject(db.raidLogUrls), plainObject(db.raidKinds)]; const text = [id, maps[0][id] || "", maps[1][id] || "", maps[2][id] || ""].concat(winners.filter((row) => row && row.raidId === id).map((row) => `${row.item || ""} ${row.label || ""}`)).concat(attendance.filter((row) => row && row.raidId === id).map((row) => `${row.url || ""} ${row.title || ""} ${ensureArray(row.bosses).map((boss) => boss && boss.name || "").join(" ")}`)).join(" "); const inferred = inferPhase(text); if (inferred) return inferred; const hasTocItem = winners.some((row) => row && row.raidId === id && Number(row.itemId) >= 46950 && Number(row.itemId) <= 47299); return hasTocItem ? "phase3" : ""; }
 function snapshotDateForId(id, winners, attendance) {
   const fromId = datePart(id);
   if (fromId) return fromId;
@@ -157,8 +185,14 @@ function synthesizeRaidSnapshots(existing, winners, attendance, db) {
     if (!raid || typeof raid !== "object") continue;
     const id = String(raid.id || raid.finalizedAt || "");
     if (!id || map.has(id)) continue;
-    map.set(id, raid);
-    out.push(raid);
+    const normalizedRaid = {
+      ...raid,
+      phase: raid.phase || plainObject(db.raidPhases)[id] || inferSnapshotPhase(id, winners, attendance, db),
+      raidKind: raid.raidKind || plainObject(db.raidKinds)[id] || "main",
+      winnerCount: raid.winnerCount || winners.filter((row) => row && row.raidId === id).length
+    };
+    map.set(id, normalizedRaid);
+    out.push(normalizedRaid);
   }
   const ids = new Set();
   for (const row of winners) if (row && row.raidId) ids.add(String(row.raidId));
@@ -169,7 +203,7 @@ function synthesizeRaidSnapshots(existing, winners, attendance, db) {
     const raid = {
       id,
       title: date ? `Raid ${date}` : id,
-      phase: plainObject(db.raidPhases)[id] || "",
+      phase: inferSnapshotPhase(id, winners, attendance, db),
       raidKind: plainObject(db.raidKinds)[id] || "main",
       finalizedAt: id,
       winnerCount: winners.filter((row) => row && row.raidId === id).length,
@@ -199,6 +233,16 @@ const next = {
   raidLogUrls: mergeMap(archive.raidLogUrls, db.raidLogUrls),
   attendance: mergedAttendance
 };
-fs.writeFileSync(archivePath, JSON.stringify(next), "utf8");
-console.log(`Updated archive: ${archivePath}`);
-console.log(`Archive winners: ${next.winners.length}, raids: ${next.raidSnapshots.length}, attendance: ${next.attendance.length}`);
+if (process.env.AOL_ARCHIVE_STDOUT === "1") {
+  process.stdout.write(JSON.stringify(next));
+} else {
+  writeFileAtomic(archivePath, JSON.stringify(next));
+  console.log(`Updated archive: ${archivePath}`);
+  console.log(`Archive winners: ${next.winners.length}, raids: ${next.raidSnapshots.length}, attendance: ${next.attendance.length}`);
+}
+
+
+
+
+
+

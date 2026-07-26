@@ -345,7 +345,7 @@
       return {
         id,
         title,
-        phase: raid.phase || raidPhaseOverrides[id] || inferPhase(title),
+        phase: raid.phase || raidPhaseOverrides[id] || inferPhase(title) || inferPhaseFromRaidRows(id, winners, db),
         raidKind: normalizeRaidKind(raid.raidKind || raidKindOverrides[id]),
         finalizedAt: raid.finalizedAt || "",
         winnerCount: raid.winnerCount || winnerCountsByRaid.get(id) || 0,
@@ -361,7 +361,7 @@
       raids.push({
         id,
         title,
-        phase: raidPhaseOverrides[id] || inferPhase(title),
+        phase: raidPhaseOverrides[id] || inferPhase(title) || inferPhaseFromRaidRows(id, winners, db),
         raidKind: normalizeRaidKind(raidKindOverrides[id]),
         finalizedAt: id,
         winnerCount,
@@ -495,6 +495,17 @@
     if (value.includes("icecrown") || /\bicc\b/.test(value)) return "phase4";
     if (value.includes("ruby") || /\brs\b/.test(value)) return "phase5";
     return "";
+  }
+
+  function inferPhaseFromRaidRows(raidId, winners, db = {}) {
+    const logUrl = db.raidLogUrls && db.raidLogUrls[raidId] ? db.raidLogUrls[raidId] : "";
+    const text = [raidId, logUrl]
+      .concat(ensureArray(winners).filter((row) => row.raidId === raidId).map((row) => `${row.item || ""} ${row.label || ""}`))
+      .join(" ");
+    const inferred = inferPhase(text);
+    if (inferred) return inferred;
+    const hasTocItem = ensureArray(winners).some((row) => row.raidId === raidId && Number(row.itemId) >= 46950 && Number(row.itemId) <= 47299);
+    return hasTocItem ? "phase3" : "";
   }
 
   function attendancePhaseText(record, title = "") {
