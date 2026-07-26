@@ -575,10 +575,33 @@
     return [row.raidId || "", row.source || ""].join("|");
   }
 
+  function rowDatePart(value) {
+    const text = String(value || "");
+    return /^\d{4}-\d{2}-\d{2}/.test(text) ? text.slice(0, 10) : "";
+  }
+
+  function normalizeRowsForActiveRaid(rows, db) {
+    const activeId = String(db?.activeRaidId || "");
+    const activeDate = rowDatePart(activeId);
+    if (!activeId || !activeDate) return ensureArray(rows);
+    return ensureArray(rows).map((row) => {
+      if (!row || typeof row !== "object") return row;
+      const rowDate = rowDatePart(row.date || row.fetchedAt || row.raidId);
+      if (rowDate !== activeDate || row.raidId === activeId) return row;
+      return { ...row, raidId: activeId };
+    });
+  }
+
   function mergeArchiveIntoDb(db, archive) {
-    if (!archive || typeof archive !== "object") return db;
-    db.winners = mergeRows(archive.winners, db.winners, winnerArchiveKey);
-    db.raidSnapshots = mergeRows(archive.raidSnapshots, db.raidSnapshots, raidArchiveKey);
+    const normalizedDbWinners = normalizeRowsForActiveRaid(db.winners, db);
+    const normalizedDbRaids = ensureArray(db.raidSnapshots);
+    if (!archive || typeof archive !== "object") {
+      db.winners = normalizedDbWinners;
+      db.raidSnapshots = normalizedDbRaids;
+      return db;
+    }
+    db.winners = mergeRows(normalizeRowsForActiveRaid(archive.winners, db), normalizedDbWinners, winnerArchiveKey);
+    db.raidSnapshots = mergeRows(archive.raidSnapshots, normalizedDbRaids, raidArchiveKey);
     db.raidKinds = { ...(archive.raidKinds || {}), ...(db.raidKinds || {}) };
     db.raidPhases = { ...(archive.raidPhases || {}), ...(db.raidPhases || {}) };
     db.raidLogUrls = { ...(archive.raidLogUrls || {}), ...(db.raidLogUrls || {}) };
@@ -586,7 +609,7 @@
   }
 
   function mergeArchiveAttendance(attendanceRows, archive) {
-    return mergeRows(archive?.attendance || [], attendanceRows, attendanceArchiveKey);
+    return mergeRows(archive?.attendance || [], normalizeRowsForActiveRaid(attendanceRows, rawDb || {}), attendanceArchiveKey);
   }
   function setStatus(message) {
     els.status.hidden = !message;
