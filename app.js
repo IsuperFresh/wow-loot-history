@@ -1,4 +1,4 @@
-(function () {
+﻿(function () {
   "use strict";
 
   const els = {
@@ -345,7 +345,7 @@
       return {
         id,
         title,
-        phase: raid.phase || raidPhaseOverrides[id] || inferPhase(title) || inferPhaseFromRaidRows(id, winners, db),
+        phase: inferPhase(title) || raid.phase || raidPhaseOverrides[id] || inferPhaseFromRaidRows(id, winners, db),
         raidKind: normalizeRaidKind(raid.raidKind || raidKindOverrides[id]),
         finalizedAt: raid.finalizedAt || "",
         winnerCount: raid.winnerCount || winnerCountsByRaid.get(id) || 0,
@@ -1872,4 +1872,5 @@
     els.sourceMeta.textContent = "Waiting for SoftResRoller.lua";
   }
 })();
+
 

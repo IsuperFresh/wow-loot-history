@@ -187,7 +187,7 @@ function synthesizeRaidSnapshots(existing, winners, attendance, db) {
     if (!id || map.has(id)) continue;
     const normalizedRaid = {
       ...raid,
-      phase: raid.phase || plainObject(db.raidPhases)[id] || inferSnapshotPhase(id, winners, attendance, db),
+      phase: inferPhase(raid.title || id) || raid.phase || plainObject(db.raidPhases)[id] || inferSnapshotPhase(id, winners, attendance, db),
       raidKind: raid.raidKind || plainObject(db.raidKinds)[id] || "main",
       winnerCount: raid.winnerCount || winners.filter((row) => row && row.raidId === id).length
     };
@@ -240,6 +240,7 @@ if (process.env.AOL_ARCHIVE_STDOUT === "1") {
   console.log(`Updated archive: ${archivePath}`);
   console.log(`Archive winners: ${next.winners.length}, raids: ${next.raidSnapshots.length}, attendance: ${next.attendance.length}`);
 }
+
 
 
 
